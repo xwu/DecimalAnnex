@@ -68,23 +68,6 @@ public struct Decimal128: Sendable {
 
 @available(macOS 15.0, *)
 extension Decimal128 {
-  public typealias RawSignificand = UInt128
-
-  @inlinable
-  internal static var _exponentBias: UInt {
-    @inline(__always) get { 6176 }
-  }
-
-  @inlinable
-  internal static var _combinationMask: UInt {
-    @inline(__always) get { 1 &<< 17 &- 1 }
-  }
-
-  @inlinable
-  internal static var _trailingSignificandMask: UInt128 {
-    @inline(__always) get { 1 &<< 110 &- 1 }
-  }
-
   @inlinable
   public var sign: FloatingPointSign {
     let rawValue = Int(truncatingIfNeeded: _encoding &>> 127)
@@ -97,13 +80,69 @@ extension Decimal128 {
   }
 
   @inlinable
+  public var magnitude: Self {
+    @inline(__always) get { Self(bitPattern: _encoding & (~0 &>> 1)) }
+  }
+
+  @inlinable
+  public static prefix func - (operand: Self) -> Self {
+    var result = operand
+    result.negate()
+    return result
+  }
+
+  @inlinable
+  public mutating func negate() {
+    _encoding ^= ~(~0 &>> 1)
+  }
+}
+
+
+@available(macOS 15.0, *)
+extension Decimal128 {
+  public typealias RawSignificand = UInt128
+
+  @inlinable
+  internal static var _exponentBias: UInt {
+    @inline(__always) get { 6176 }
+  }
+
+  @inlinable
   internal var _combinationBitPattern: UInt {
-    UInt(truncatingIfNeeded: _encoding &>> 110) & Self._combinationMask
+    @inline(__always) get {
+      UInt(truncatingIfNeeded: _encoding &>> 110) & (1 &<< 17 &- 1)
+    }
+  }
+
+  /// The 14-bit encoding of the value's exponent field.
+  ///
+  /// This property is unadjusted by the exponent bias. In the case of
+  /// non-finite values, it excludes two leading bits of the combination field
+  /// and includes extra trailing bits.
+  @inlinable
+  public var exponentBitPattern: UInt {
+    let g = _combinationBitPattern
+    return if g < 0x18000 { g &>> 3 & 0x3fff } else { g &>> 1 & 0x3fff }
   }
 
   @inlinable
   internal var _trailingSignificandBitPattern: UInt128 {
-    _encoding & Self._trailingSignificandMask
+    @inline(__always) get { _encoding & (1 &<< 110 &- 1) }
+  }
+
+  /// The 114-bit encoding of the value's concatenated significand field,
+  /// including any implicit leading bit.
+  ///
+  /// In the case of non-finite values, the implicit leading bit is always set:
+  /// for NaN values, this property includes the payload with extra leading
+  /// bits; for infinite values, it includes ignored bits.
+  @inlinable
+  public var significandBitPattern: UInt128 {
+    if _combinationBitPattern < 0x18000 {
+      _encoding & (1 &<< 113 &- 1)
+    } else {
+      _encoding & (1 &<< 111 &- 1) | (1 &<< 113)
+    }
   }
 
   @inlinable
@@ -114,8 +153,27 @@ extension Decimal128 {
   ) {
     _encoding =
       (UInt128(truncatingIfNeeded: _sign.rawValue) &<< 127) |
-      (UInt128(truncatingIfNeeded: g & Self._combinationMask) &<< 110) |
-      (t & Self._trailingSignificandMask)
+      (UInt128(truncatingIfNeeded: g & (1 &<< 17 &- 1)) &<< 110) |
+      (t & (1 &<< 110 &- 1))
+  }
+
+  @inlinable
+  public init(
+    _sign: FloatingPointSign,
+    exponentBitPattern e: UInt,
+    significandBitPattern c: UInt128
+  ) {
+    if (c &>> 113) & 1 == 0 {
+      _encoding =
+        (UInt128(truncatingIfNeeded: _sign.rawValue) &<< 127) |
+        (UInt128(truncatingIfNeeded: e & 0x3fff) &<< 113) |
+        (c & (1 &<< 113 &- 1))
+    } else {
+      _encoding =
+        (UInt128(truncatingIfNeeded: _sign.rawValue) &<< 127) |
+        (UInt128(truncatingIfNeeded: (e & 0x3fff) | 0xc000) &<< 111) |
+        (c & (1 &<< 111 &- 1))
+    }
   }
 }
 
@@ -160,7 +218,7 @@ extension Decimal128 {
     }
     guard g < 0x1e000 else {
       // Infinity.
-      return _encoding & (1 &<< 127 &- 1) == Self.infinity._encoding
+      return magnitude._encoding == Self.infinity._encoding
     }
     // When the combination field begins `11...`,
     // all significands are noncanonical.
@@ -205,32 +263,49 @@ extension Decimal128 {
 
   @inlinable
   public var isZero: Bool {
-    @inline(__always) get {
-      let g = _combinationBitPattern
-      // When the combination field begins `11...`, either:
-      // - the value is infinity or NaN; or
-      // - the significand is noncanonical and treated as zero.
-      guard g < 0x18000 else { return g < 0x1e000 }
-      // Having excluded all values where the combination field begins `11...`,
-      // we know the represented significand is in the lower 113 bits.
-      let significand = _encoding & (1 &<< 113 &- 1)
-      return significand == 0 ||
-        significand > 9_999_999_999_999_999_999_999_999_999_999_999 as UInt128
+    let g = _combinationBitPattern
+    // When the combination field begins `11...`, either:
+    // - the value is infinity or NaN; or
+    // - the significand is noncanonical and treated as zero.
+    guard g < 0x18000 else { return g < 0x1e000 }
+    // Having excluded all values where the combination field begins `11...`,
+    // we know the represented significand is in the lower 113 bits.
+    let significand = _encoding & (1 &<< 113 &- 1)
+    return significand == 0 ||
+      significand > 9_999_999_999_999_999_999_999_999_999_999_999 as UInt128
+  }
+}
+
+// MARK: - Quantum and exponent (5.3.2)
+@available(macOS 15.0, *)
+extension Decimal128 {
+  @inlinable
+  public var quantum: Self {
+    if isFinite {
+      Self(
+        _sign: sign,
+        exponentBitPattern: exponentBitPattern,
+        significandBitPattern: 1)
+    } else {
+      Self(bitPattern: _encoding & Self.nan._encoding)
     }
   }
 
   @inlinable
-  public var quantum: Self {
-    guard isFinite else {
-      return Self(bitPattern: _encoding & Self.nan._encoding)
+  public func hasSameQuantum(as other: Self) -> Bool {
+    guard isFinite && other.isFinite else {
+      return _encoding & Self.nan._encoding ==
+        other._encoding & Self.nan._encoding
     }
-    var g = _combinationBitPattern
-    if g >= 0x18000 { g &<<= 2 }
-    g &= ~0x7
-    return Self(
-      _sign: sign,
-      combinationBitPattern: g,
-      trailingSignificandBitPattern: 1)
+    return exponentBitPattern == other.exponentBitPattern
+  }
+
+  @inlinable
+  public var exponent: Int {
+    guard isFinite else { return .max }
+    guard !isZero else { return .min }
+    return Int(exponentBitPattern) - Int(Self._exponentBias) +
+      significandBitPattern._log10
   }
 }
 
