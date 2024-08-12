@@ -5,10 +5,25 @@ extension UInt32 {
   internal var _log10: Int {
     // See discussion at:
     // https://lemire.me/blog/2021/05/28/computing-the-number-of-digits-of-an-integer-quickly/
-    let table: [Self] =
-      [9, 99, 999, 9_999, 99_999, 999_999, 9_999_999, 99_999_999, 999_999_999]
-    let estimate = (9 &* (31 &- (self|1).leadingZeroBitCount)) &>> 5
-    return self > table[estimate] ? estimate &+ 1 : estimate
+    let estimate = ((9 &* (31 &- (self|1).leadingZeroBitCount)) &>> 5) &+ 1
+    return self >= Self._exp10(estimate) ? estimate : estimate &- 1
+  }
+
+  @inlinable
+  internal static func _exp10(_ n: Int) -> Self {
+    let table: [Self] = [
+                  1,
+                 10,
+                100,
+              1_000,
+             10_000,
+            100_000,
+          1_000_000,
+         10_000_000,
+        100_000_000,
+      1_000_000_000
+    ]
+    return n < 0 ? 0 : table[n]
   }
 }
 
@@ -16,23 +31,49 @@ extension UInt32 {
 extension UInt128 {
   @inlinable
   internal var _log10: Int {
-    // Use a lookup table for smaller values.
     if self <= UInt32.max { return UInt32(self)._log10 }
 
     // See discussion at:
     // https://lemire.me/blog/2021/05/28/computing-the-number-of-digits-of-an-integer-quickly/
     //
     // To approximate `1 / log2(10)`, we must use 19/64 (expressed here as
-    // `(19 &* ...) &>> 6`) instead of 9/32. This is so that the estimate is at
-    // most one less than the true floor log10.
+    // `(19 &* ...) &>> 6`) instead of 9/32. This is so that the estimate (after
+    // adding one) is at least the true floor log10.
     //
     // Meanwhile, we avoid using an even more precise approximation such as
-    // 39/128, because if we estimate `(UInt128.max)._log10` bang on then we'll
-    // end up trying to compute `10 ** 39` while checking if our estimate is
-    // off by one, which results in overflow.
-    let estimate = (19 &* (127 &- (self|1).leadingZeroBitCount)) &>> 6
-    // Now, use Yao's method to compute `10 ** (estimate + 1)`.
-    let n = estimate &+ 1
+    // 39/128, because if we overestimate `(UInt128.max)._log10` then we'll end
+    // up trying to compute `10 ** 39` while checking if our estimate is off by
+    // one, which results in overflow.
+    let estimate = ((19 &* (127 &- (self|1).leadingZeroBitCount)) &>> 6) &+ 1
+
+    assert(estimate < 39)
+    let table: [Self] = [
+                                      100_000_000,
+                           10_000_000_000_000_000,
+                1_000_000_000_000_000_000_000_000,
+      100_000_000_000_000_000_000_000_000_000_000
+    ]
+    return self >=
+        table[(estimate &>> 3) &- 1] &* Self(UInt32._exp10(estimate & 7))
+      ? estimate
+      : estimate &- 1
+  }
+
+  @inlinable
+  internal static func _exp10(_ n: Int) -> Self {
+    if n <= 9 { return Self(UInt32._exp10(n)) }
+
+    precondition(n < 39, "Arithmetic overflow")
+    let table: [Self] = [
+                                      100_000_000,
+                           10_000_000_000_000_000,
+                1_000_000_000_000_000_000_000_000,
+      100_000_000_000_000_000_000_000_000_000_000
+    ]
+    return table[(n &>> 3) &- 1] &* Self(UInt32._exp10(n & 7))
+
+#if false
+    // Yao's method.
     var y = 1 as Self
     y &*= 1 &+ 9 &* Self(truncatingIfNeeded: n & 1)
     y &*= 1 &+ 99 &* Self(truncatingIfNeeded: (n &>> 1) & 1)
@@ -42,7 +83,8 @@ extension UInt128 {
     y &*=
       1 &+ 9999_9999_9999_9999_9999_9999_9999_9999 &*
         Self(truncatingIfNeeded: (n &>> 5) & 1)
-    return self > y &- 1 ? estimate &+ 1 : estimate
+    return y
+#endif
   }
 }
 
@@ -70,18 +112,18 @@ public struct Decimal128: Sendable {
 extension Decimal128 {
   @inlinable
   public var sign: FloatingPointSign {
-    let rawValue = Int(truncatingIfNeeded: _encoding &>> 127)
+    let rawValue = Int(truncatingIfNeeded: bitPattern &>> 127)
     return FloatingPointSign(rawValue: rawValue).unsafelyUnwrapped
   }
 
   @inlinable
   internal var _isSignMinus: Bool {
-    @inline(__always) get { _encoding &>> 127 == 1 }
+    @inline(__always) get { bitPattern &>> 127 == 1 }
   }
 
   @inlinable
   public var magnitude: Self {
-    @inline(__always) get { Self(bitPattern: _encoding & (~0 &>> 1)) }
+    @inline(__always) get { Self(bitPattern: bitPattern & (~0 &>> 1)) }
   }
 
   @inlinable
@@ -94,6 +136,13 @@ extension Decimal128 {
   @inlinable
   public mutating func negate() {
     _encoding ^= ~(~0 &>> 1)
+  }
+
+  @inlinable
+  public init(signOf sign: Self, magnitudeOf magnitude: Self) {
+    _encoding =
+      (sign.bitPattern & (1 &<< 127)) |
+        (magnitude.bitPattern & (~0 &>> 1))
   }
 }
 
@@ -110,7 +159,7 @@ extension Decimal128 {
   @inlinable
   internal var _combinationBitPattern: UInt {
     @inline(__always) get {
-      UInt(truncatingIfNeeded: _encoding &>> 110) & (1 &<< 17 &- 1)
+      UInt(truncatingIfNeeded: bitPattern &>> 110) & 0x1ffff
     }
   }
 
@@ -121,13 +170,18 @@ extension Decimal128 {
   /// and includes extra trailing bits.
   @inlinable
   public var exponentBitPattern: UInt {
-    let g = _combinationBitPattern
-    return if g < 0x18000 { g &>> 3 & 0x3fff } else { g &>> 1 & 0x3fff }
+    if magnitude.bitPattern < ((0x3 as UInt128) &<< 125) {
+      UInt(truncatingIfNeeded: bitPattern &>> 113) & 0x3fff
+    } else {
+      UInt(truncatingIfNeeded: bitPattern &>> 111) & 0x3fff
+    }
   }
 
   @inlinable
   internal var _trailingSignificandBitPattern: UInt128 {
-    @inline(__always) get { _encoding & (1 &<< 110 &- 1) }
+    @inline(__always) get {
+      bitPattern & (1 &<< 110 &- 1)
+    }
   }
 
   /// The 114-bit encoding of the value's concatenated significand field,
@@ -138,10 +192,10 @@ extension Decimal128 {
   /// bits; for infinite values, it includes ignored bits.
   @inlinable
   public var significandBitPattern: UInt128 {
-    if _combinationBitPattern < 0x18000 {
-      _encoding & (1 &<< 113 &- 1)
+    if magnitude.bitPattern < ((0x3 as UInt128) &<< 125) {
+      bitPattern & (1 &<< 113 &- 1)
     } else {
-      _encoding & (1 &<< 111 &- 1) | (1 &<< 113)
+      bitPattern & (1 &<< 111 &- 1) | (1 &<< 113)
     }
   }
 
@@ -153,26 +207,26 @@ extension Decimal128 {
   ) {
     _encoding =
       (UInt128(truncatingIfNeeded: _sign.rawValue) &<< 127) |
-      (UInt128(truncatingIfNeeded: g & (1 &<< 17 &- 1)) &<< 110) |
-      (t & (1 &<< 110 &- 1))
+        (UInt128(truncatingIfNeeded: g & 0x1ffff) &<< 110) |
+          (t & (1 &<< 110 &- 1))
   }
 
   @inlinable
   public init(
-    _sign: FloatingPointSign,
+    sign: FloatingPointSign,
     exponentBitPattern e: UInt,
     significandBitPattern c: UInt128
   ) {
     if (c &>> 113) & 1 == 0 {
       _encoding =
-        (UInt128(truncatingIfNeeded: _sign.rawValue) &<< 127) |
-        (UInt128(truncatingIfNeeded: e & 0x3fff) &<< 113) |
-        (c & (1 &<< 113 &- 1))
+        (UInt128(truncatingIfNeeded: sign.rawValue) &<< 127) |
+          (UInt128(truncatingIfNeeded: e & 0x3fff) &<< 113) |
+            (c & (1 &<< 113 &- 1))
     } else {
       _encoding =
-        (UInt128(truncatingIfNeeded: _sign.rawValue) &<< 127) |
-        (UInt128(truncatingIfNeeded: (e & 0x3fff) | 0xc000) &<< 111) |
-        (c & (1 &<< 111 &- 1))
+        (UInt128(truncatingIfNeeded: sign.rawValue) &<< 127) |
+          (UInt128(truncatingIfNeeded: (e & 0x3fff) | 0xc000) &<< 111) |
+            (c & (1 &<< 111 &- 1))
     }
   }
 }
@@ -205,6 +259,13 @@ extension Decimal128 {
   }
 
   @inlinable
+  public init(nan payload: UInt128, signaling: Bool) {
+    _encoding =
+      ((signaling ? 0x1f800 : 0x1f000) &<< 110) |
+        (payload & (1 &<< 110 &- 1))
+  }
+
+  @inlinable
   public var isCanonical: Bool {
     let g = _combinationBitPattern
     guard g < 0x1f000 else {
@@ -218,14 +279,14 @@ extension Decimal128 {
     }
     guard g < 0x1e000 else {
       // Infinity.
-      return magnitude._encoding == Self.infinity._encoding
+      return magnitude.bitPattern == Self.infinity.bitPattern
     }
     // When the combination field begins `11...`,
     // all significands are noncanonical.
     guard g < 0x18000 else { return false }
     // Having excluded all values where the combination field begins `11...`,
     // we know the represented significand is in the lower 113 bits.
-    return _encoding & (1 &<< 113 &- 1) <= 9_999_999_999_999_999_999_999_999_999_999_999 as UInt128
+    return bitPattern & (1 &<< 113 &- 1) <= 9_999_999_999_999_999_999_999_999_999_999_999 as UInt128
   }
 
   @inlinable
@@ -270,32 +331,39 @@ extension Decimal128 {
     guard g < 0x18000 else { return g < 0x1e000 }
     // Having excluded all values where the combination field begins `11...`,
     // we know the represented significand is in the lower 113 bits.
-    let significand = _encoding & (1 &<< 113 &- 1)
-    return significand == 0 ||
-      significand > 9_999_999_999_999_999_999_999_999_999_999_999 as UInt128
+    let c = bitPattern & (1 &<< 113 &- 1)
+    return c == 0 || c > 9_999_999_999_999_999_999_999_999_999_999_999 as UInt128
+  }
+
+  @inlinable
+  internal var _isFiniteNonzero: Bool {
+    guard _combinationBitPattern < 0x18000 else { return false }
+    // Having excluded all values where the combination field begins `11...`,
+    // we know the represented significand is in the lower 113 bits.
+    let c = bitPattern & (1 &<< 113 &- 1)
+    return c > 0 as UInt128 && c < 10_000_000_000_000_000_000_000_000_000_000_000
   }
 }
 
-// MARK: - Quantum and exponent (5.3.2)
 @available(macOS 15.0, *)
 extension Decimal128 {
   @inlinable
   public var quantum: Self {
     if isFinite {
       Self(
-        _sign: sign,
+        sign: sign,
         exponentBitPattern: exponentBitPattern,
         significandBitPattern: 1)
     } else {
-      Self(bitPattern: _encoding & Self.nan._encoding)
+      Self(bitPattern: bitPattern & Self.nan.bitPattern)
     }
   }
 
   @inlinable
   public func hasSameQuantum(as other: Self) -> Bool {
     guard isFinite && other.isFinite else {
-      return _encoding & Self.nan._encoding ==
-        other._encoding & Self.nan._encoding
+      return bitPattern & Self.nan.bitPattern ==
+        other.bitPattern & Self.nan.bitPattern
     }
     return exponentBitPattern == other.exponentBitPattern
   }
@@ -306,6 +374,45 @@ extension Decimal128 {
     guard !isZero else { return .min }
     return Int(exponentBitPattern) - Int(Self._exponentBias) +
       significandBitPattern._log10
+  }
+}
+
+@available(macOS 15.0, *)
+extension Decimal128: Equatable {
+  @inlinable
+  public static func == (lhs: Self, rhs: Self) -> Bool {
+    if lhs.bitPattern == rhs.bitPattern { return !lhs.isNaN }
+
+    guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
+      if lhs.isNaN || rhs.isNaN { return false }
+
+      if lhs.isInfinite {
+        return rhs.isInfinite && (lhs._isSignMinus == rhs._isSignMinus)
+      }
+      if rhs.isInfinite { return false }
+
+      return lhs.isZero && rhs.isZero
+    }
+
+    if lhs._isSignMinus != rhs._isSignMinus { return false }
+
+    var lhs = lhs, rhs = rhs
+    var n = Int(lhs.exponentBitPattern) - Int(rhs.exponentBitPattern)
+    // Equivalent finite nonzero values with the same exponent bit pattern must
+    // have the same overall bit pattern, in which case we've already taken the
+    // early exit above.
+    if n == 0 { return false }
+    // If necessary, swap operands to simplify the logic that follows.
+    if n < 0 {
+      swap(&lhs, &rhs)
+      n = -n
+    }
+
+    // Equivalent values cannot differ in exponent bit pattern by more than 33.
+    if n > 33 { return false }
+    let (lc, rc) = (lhs.significandBitPattern, rhs.significandBitPattern)
+    guard lc < rc else { return false }
+    return lc.multipliedFullWidth(by: UInt128._exp10(n)) == (high: 0, low: rc)
   }
 }
 

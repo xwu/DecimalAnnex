@@ -11,6 +11,22 @@ final class DecimalAnnexTests: XCTestCase {
     }
   }
 
+  func testEquatable() throws {
+    guard #available(macOS 15.0, *) else { return }
+    
+    let x = Decimal128(
+      _sign: .minus,
+      combinationBitPattern: 6177 << 3,
+      trailingSignificandBitPattern: 10)
+    let y = Decimal128(
+      _sign: .minus,
+      combinationBitPattern: 6178 << 3,
+      trailingSignificandBitPattern: 1)
+
+    XCTAssertTrue(x == y)
+    XCTAssertFalse(x == -y)
+  }
+
   func testDescription() throws {
     guard #available(macOS 15.0, *) else { return }
 
