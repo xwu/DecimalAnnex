@@ -11,6 +11,13 @@ final class DecimalAnnexTests: XCTestCase {
     }
   }
 
+  func testPi() throws {
+    guard #available (macOS 15.0, *) else { return }
+
+    let x = Decimal128.pi
+    XCTAssertEqual(x.description, "3.141592653589793238462643383279502")
+  }
+
   func testEquatable() throws {
     guard #available(macOS 15.0, *) else { return }
     
