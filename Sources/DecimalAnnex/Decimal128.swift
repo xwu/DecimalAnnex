@@ -88,6 +88,20 @@ extension UInt128 {
   }
 }
 
+@inlinable
+internal func _signal(_: DecimalException) {
+  // No-op (for now).
+}
+
+@frozen
+public enum DecimalException {
+  case invalid
+  case divisionByZero
+  case overflow
+  case underflow
+  case inexact
+}
+
 @available(macOS 15.0, *)
 @frozen
 public struct Decimal128: Sendable {
@@ -370,8 +384,14 @@ extension Decimal128 {
 
   @inlinable
   public var exponent: Int {
-    guard isFinite else { return .max }
-    guard !isZero else { return .min }
+    guard isFinite else {
+      _signal(.invalid)
+      return .max
+    }
+    guard !isZero else {
+      _signal(.invalid)
+      return .min
+    }
     return Int(exponentBitPattern) - Int(Self._exponentBias) +
       significandBitPattern._log10
   }
@@ -381,10 +401,16 @@ extension Decimal128 {
 extension Decimal128: Equatable {
   @inlinable
   public static func == (lhs: Self, rhs: Self) -> Bool {
-    if lhs.bitPattern == rhs.bitPattern { return !lhs.isNaN }
+    if lhs.bitPattern == rhs.bitPattern {
+      if lhs.isSignalingNaN { _signal(.invalid) }
+      return !lhs.isNaN
+    }
 
     guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
-      if lhs.isNaN || rhs.isNaN { return false }
+      if lhs.isNaN || rhs.isNaN {
+        if lhs.isSignalingNaN || rhs.isSignalingNaN { _signal(.invalid) }
+        return false
+      }
 
       if lhs.isInfinite {
         return rhs.isInfinite && (lhs._isSignMinus == rhs._isSignMinus)
@@ -405,7 +431,7 @@ extension Decimal128: Equatable {
     // If necessary, swap operands to simplify the logic that follows.
     if n < 0 {
       swap(&lhs, &rhs)
-      n = -n
+      n.negate()
     }
 
     // Equivalent values cannot differ in exponent bit pattern by more than 33.
@@ -413,6 +439,144 @@ extension Decimal128: Equatable {
     let (lc, rc) = (lhs.significandBitPattern, rhs.significandBitPattern)
     guard lc < rc else { return false }
     return lc.multipliedFullWidth(by: UInt128._exp10(n)) == (high: 0, low: rc)
+  }
+}
+
+@available(macOS 15.0, *)
+extension Decimal128: Hashable {
+  /// Returns the result of adding +0 to the value.
+  ///
+  /// The representation of the +0 operand has the minimum exponent, such that
+  /// the result is represented with the least possible exponent.
+  @inlinable
+  internal func _addingZero() -> Self {
+    guard _isFiniteNonzero else {
+      if isNaN {
+        if isSignalingNaN { _signal(.invalid) }
+        // Note that `mask` will clear the signaling bit, silencing sNaN.
+        var mask: UInt128 = 0x3f000 &<< 110
+        // Preserve the payload (i.e., trailing significand bit pattern) only if
+        // it is canonical.
+        if _trailingSignificandBitPattern <=
+            999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
+          mask |= 1 &<< 110 &- 1
+        }
+        return Self(bitPattern: bitPattern & mask)
+      }
+      if isInfinite {
+        return Self(bitPattern: bitPattern & (0x3e000 &<< 110))
+      }
+      // The result of adding +0 to ±0 is +0.
+      return Self()
+    }
+
+    var e = exponentBitPattern
+    guard e > 0 else { return self }
+    var c = significandBitPattern
+    // Estimate log10(c). See `UInt128._log10` for a more detailed explanation.
+    // It is important that this estimate be at least the true floor log10 and
+    // at most one greater.
+    let estimate = ((19 &* (127 &- (c|1).leadingZeroBitCount)) &>> 6) &+ 1
+    let n = min(e, UInt(max(0, 33 &- estimate)))
+    if n > 0 {
+      c &*= UInt128._exp10(Int(n))
+      e &-= n
+    }
+    if e > 0 && c <= 999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
+      c &*= 10
+      e &-= 1
+    }
+    return Self(sign: sign, exponentBitPattern: e, significandBitPattern: c)
+  }
+
+  @inlinable
+  public func hash(into hasher: inout Hasher) {
+    // By adding zero, we hash every representation of zero the same way, and
+    // we also obtain a consistent canonical representation for every number,
+    // whether finite or infinite. (Signaling NaNs are also quieted.)
+    hasher.combine(_addingZero().bitPattern)
+  }
+}
+
+@available(macOS 15.0, *)
+extension Decimal128: Comparable {
+  @inlinable
+  public static func < (lhs: Self, rhs: Self) -> Bool {
+    if lhs.bitPattern == rhs.bitPattern {
+      if lhs.isSignalingNaN { _signal(.invalid) }
+      return false
+    }
+
+    guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
+      if lhs.isNaN || rhs.isNaN {
+        if lhs.isSignalingNaN || rhs.isSignalingNaN { _signal(.invalid) }
+        return false
+      }
+
+      if lhs.isInfinite {
+        return lhs._isSignMinus && !(rhs._isSignMinus && rhs.isInfinite)
+      }
+      if rhs.isInfinite { return !rhs._isSignMinus }
+
+      if lhs.isZero {
+        return !rhs._isSignMinus && !rhs.isZero
+      }
+      return lhs._isSignMinus
+    }
+
+    var lhs = lhs, rhs = rhs
+    if lhs._isSignMinus {
+      if !rhs._isSignMinus { return true }
+      // If operands are both negative, then swap and compare magnitudes (i.e.,
+      // if lhs < 0, rhs < 0, and lhs < rhs, then |rhs| < |lhs|).
+      // Since we won't be checking the sign again, it suffices just to swap
+      // the values themselves rather than actually computing their magnitudes.
+      swap(&lhs, &rhs)
+    } else if rhs._isSignMinus {
+      return false
+    }
+
+    var n = Int(lhs.exponentBitPattern) - Int(rhs.exponentBitPattern)
+    if n == 0 { return lhs.significandBitPattern < rhs.significandBitPattern }
+    // If necessary, swap operands to simplify the logic that follows, but we
+    // will need to remember that we did that.
+    var isSwapped = false
+    if n < 0 {
+      swap(&lhs, &rhs)
+      isSwapped = true
+      n.negate()
+    }
+
+    // If lhs < rhs, then the exponent bit pattern of `lhs` cannot be more than
+    // 33 _greater_ than that of `rhs`.
+    if n > 33 { return isSwapped }
+    let (lc, rc) = (lhs.significandBitPattern, rhs.significandBitPattern)
+    guard lc < rc else { return isSwapped }
+    return isSwapped !=
+      (lc.multipliedFullWidth(by: UInt128._exp10(n)) < (high: 0, low: rc))
+  }
+
+  @inlinable
+  public static func > (lhs: Self, rhs: Self) -> Bool {
+    return rhs < lhs
+  }
+
+  @inlinable
+  public static func <= (lhs: Self, rhs: Self) -> Bool {
+    if lhs.isNaN || rhs.isNaN {
+      if lhs.isSignalingNaN || rhs.isSignalingNaN { _signal(.invalid) }
+      return false
+    }
+    return !(rhs < lhs)
+  }
+
+  @inlinable
+  public static func >= (lhs: Self, rhs: Self) -> Bool {
+    if lhs.isNaN || rhs.isNaN {
+      if lhs.isSignalingNaN || rhs.isSignalingNaN { _signal(.invalid) }
+      return false
+    }
+    return !(lhs < rhs)
   }
 }
 
