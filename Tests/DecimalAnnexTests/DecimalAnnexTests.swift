@@ -45,7 +45,26 @@ final class DecimalAnnexTests: XCTestCase {
       _sign: .minus,
       combinationBitPattern: 6178 << 3,
       trailingSignificandBitPattern: 1)
-    XCTAssertEqual(x._addingZero().bitPattern, y._addingZero().bitPattern)
+    XCTAssertEqual(x._addingZeroWithLeastQuantum().bitPattern, y._addingZeroWithLeastQuantum().bitPattern)
+  }
+
+  func testIntegerLiteral() throws {
+    guard #available(macOS 15.0, *) else { return }
+
+    let x = 0 as Decimal128
+    XCTAssertTrue(x.isZero)
+  }
+
+  func testMultiplication() throws {
+    guard #available(macOS 15.0, *) else { return }
+
+    for i in 0..<256 {
+      for j in 0..<256 {
+        let x = Decimal128(integerLiteral: Int128(i))
+        let y = Decimal128(integerLiteral: Int128(j))
+        XCTAssertEqual(Double(i * j).description, (x * y).description)
+      }
+    }
   }
 
   func testDescription() throws {

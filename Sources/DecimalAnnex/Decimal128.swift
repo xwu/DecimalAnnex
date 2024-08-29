@@ -93,7 +93,7 @@ public struct Decimal128: Sendable {
 
   @_transparent
   public init() {
-    bitPattern = 0
+    bitPattern = 6176 &<< 113
   }
 
   @_transparent
@@ -146,11 +146,6 @@ extension Decimal128 {
 
   @inlinable
   public static var radix: Int { 10 }
-
-  @inlinable
-  internal static var _exponentBias: UInt {
-    @inline(__always) get { 6176 }
-  }
 
   @inlinable
   internal var _combinationBitPattern: UInt {
@@ -296,6 +291,31 @@ extension Decimal128 {
   }
 
   @inlinable
+  internal var _canonical: Self {
+    let g = _combinationBitPattern
+    guard g < 0x1f000 else {
+      var mask: UInt128 = 0x3f800 &<< 110
+      if _trailingSignificandBitPattern <=
+          999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
+        mask |= 1 &<< 110 &- 1
+      }
+      return Self(bitPattern: bitPattern & mask)
+    }
+    guard g < 0x1e000 else {
+      return Self(bitPattern: bitPattern & (0x3e000 &<< 110))
+    }
+    guard g < 0x18000 &&
+      (bitPattern & (1 &<< 113 &- 1) <=
+        9_999_999_999_999_999_999_999_999_999_999_999 as UInt128) else {
+      return Self(
+        sign: sign,
+        exponentBitPattern: exponentBitPattern,
+        significandBitPattern: 0)
+    }
+    return self
+  }
+
+  @inlinable
   public var isNaN: Bool {
     @inline(__always) get { _combinationBitPattern >= 0x1f000 }
   }
@@ -303,6 +323,15 @@ extension Decimal128 {
   @inlinable
   public var isSignalingNaN: Bool {
     @inline(__always) get { _combinationBitPattern >= 0x1f800 }
+  }
+
+  @inlinable
+  internal var _quiet: Self {
+    @inline(__always) get {
+      _combinationBitPattern < 0x1f800
+        ? self
+        : Self(bitPattern: bitPattern ^ (1 &<< 121))
+    }
   }
 
   @inlinable
@@ -386,8 +415,7 @@ extension Decimal128 {
       _signal(.invalid)
       return .min
     }
-    return Int(exponentBitPattern) - Int(Self._exponentBias) +
-      significandBitPattern._log10
+    return Int(exponentBitPattern) - 6176 + significandBitPattern._log10
   }
 }
 
@@ -440,10 +468,10 @@ extension Decimal128: Equatable {
 extension Decimal128: Hashable {
   /// Returns the result of adding +0 to the value.
   ///
-  /// The +0 operand is represented with the minimum exponent, so the result is
-  /// represented with the least possible exponent.
+  /// The +0 operand is represented with the least possible exponent, so the
+  /// result is represented with the least possible exponent.
   @inlinable
-  internal func _addingZero() -> Self {
+  internal func _addingZeroWithLeastQuantum() -> Self {
     guard _isFiniteNonzero else {
       if isNaN {
         if isSignalingNaN { _signal(.invalid) }
@@ -461,7 +489,7 @@ extension Decimal128: Hashable {
         return Self(bitPattern: bitPattern & (0x3e000 &<< 110))
       }
       // The result of adding +0 to ±0 is +0.
-      return Self()
+      return Self(bitPattern: 0)
     }
 
     var e = exponentBitPattern
@@ -488,7 +516,7 @@ extension Decimal128: Hashable {
     // By adding zero, we hash every representation of zero the same way, and
     // we also obtain a consistent canonical representation for every number,
     // whether finite or infinite. (Signaling NaNs are also quieted.)
-    hasher.combine(_addingZero().bitPattern)
+    hasher.combine(_addingZeroWithLeastQuantum().bitPattern)
   }
 }
 
@@ -575,6 +603,101 @@ extension Decimal128: Comparable {
 }
 
 @available(macOS 15.0, *)
+extension Decimal128: ExpressibleByIntegerLiteral {
+  @inlinable
+  public init(integerLiteral value: Int128) {
+    bitPattern = value.magnitude
+    guard bitPattern <= 9_999_999_999_999_999_999_999_999_999_999_999 as UInt128 else {
+      fatalError("Potentially inexact integer conversion not implemented")
+    }
+    bitPattern |= Self().bitPattern
+    if value < 0 { self.negate() }
+  }
+}
+
+@available(macOS 15.0, *)
+extension Decimal128: AdditiveArithmetic {
+  @inlinable
+  public static func + (lhs: Self, rhs: Self) -> Self {
+    fatalError("Not implemented")
+  }
+
+  @inlinable
+  public static func += (lhs: inout Self, rhs: Self) {
+    lhs = lhs + rhs
+  }
+
+  @inlinable
+  public static func - (lhs: Self, rhs: Self) -> Self {
+    fatalError("Not implemented")
+  }
+
+  @inlinable
+  public static func -= (lhs: inout Self, rhs: Self) {
+    lhs = lhs - rhs
+  }
+}
+
+@available(macOS 15.0, *)
+extension Decimal128: Numeric {
+  @inlinable
+  public static func * (lhs: Self, rhs: Self) -> Self {
+    let isSignMinus = lhs._isSignMinus != rhs._isSignMinus
+
+    guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
+      if lhs.isNaN {
+        if lhs.isSignalingNaN { _signal(.invalid) }
+        return lhs._quiet._canonical
+      }
+      if rhs.isNaN {
+        if rhs.isSignalingNaN { _signal(.invalid) }
+        return rhs._quiet._canonical
+      }
+
+      if lhs.isInfinite {
+        if rhs.isZero {
+          _signal(.invalid)
+          return .nan
+        }
+        return isSignMinus ? -.infinity : .infinity
+      }
+      if rhs.isInfinite {
+        if lhs.isZero {
+          _signal(.invalid)
+          return .nan
+        }
+        return isSignMinus ? -.infinity : .infinity
+      }
+
+      let e = Int(lhs.exponentBitPattern) + Int(rhs.exponentBitPattern) - 6176
+      let z = Self(bitPattern: UInt128(truncatingIfNeeded: max(0, e)) &<< 113)
+      return isSignMinus ? -z : z
+    }
+
+    let e = Int(lhs.exponentBitPattern) + Int(rhs.exponentBitPattern) - 6176
+    let (hi, lo) =
+      lhs.significandBitPattern.multipliedFullWidth(
+        by: rhs.significandBitPattern)
+    if e >= 0 && e <= 12287
+        && hi == 0 && lo <= 9_999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
+      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | lo)
+      return isSignMinus ? -abs : abs
+    }
+    fatalError("Not implemented")
+  }
+
+  @inlinable
+  public static func *= (lhs: inout Self, rhs: Self) {
+    lhs = lhs * rhs
+  }
+
+  @inlinable
+  public init?<T>(exactly source: T) where T : BinaryInteger {
+    fatalError("Not implemented")
+  }
+}
+
+@available(macOS 15.0, *)
 extension Decimal128: CustomStringConvertible {
   public var description: String {
     if isNaN {
@@ -610,8 +733,7 @@ extension Decimal128: CustomStringConvertible {
 
       // We compute the exponent right away to determine if we need special
       // handling for the significand.
-      let exponent =
-        Int(_combinationBitPattern &>> 3) - Int(Self._exponentBias) + count - 1
+      let exponent = Int(_combinationBitPattern &>> 3) - 6176 + count - 1
 
       if exponent >= 0 && exponent < min(count, 16) {
         let x = exponent + 1
