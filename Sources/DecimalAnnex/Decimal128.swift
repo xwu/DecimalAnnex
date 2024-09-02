@@ -78,12 +78,20 @@ internal func _signal(_: _DecimalException) {
 }
 
 @frozen
-public enum _DecimalException {
-  case invalid
-  case divisionByZero
-  case overflow
-  case underflow
-  case inexact
+public struct _DecimalException: OptionSet {
+  public let rawValue: UInt8
+
+  public init(rawValue: UInt8) {
+    self.rawValue = rawValue
+  }
+
+  public static let invalid: _DecimalException          = Self(rawValue:  1)
+  public static let divisionByZero: _DecimalException   = Self(rawValue:  2)
+  public static let overflow: _DecimalException         = Self(rawValue:  4)
+  public static let underflow: _DecimalException        = Self(rawValue:  8)
+  public static let inexact: _DecimalException          = Self(rawValue: 16)
+
+  public static let underflowInexact: _DecimalException = [.underflow, .inexact]
 }
 
 @available(macOS 15.0, *)
@@ -241,12 +249,12 @@ extension Decimal128 {
 
   @inlinable
   public static var greatestFiniteMagnitude: Self {
-    Self(bitPattern: (0x17ff8 &<< 110) | 9_999_999_999_999_999_999_999_999_999_999_999)
+    Self(bitPattern: (12287 &<< 113) | 9_999_999_999_999_999_999_999_999_999_999_999)
   }
 
   @inlinable
   public static var leastNormalMagnitude: Self {
-    Self(bitPattern: 1)
+    Self(bitPattern: (33 &<< 113) | 1)
   }
 
   @inlinable
@@ -348,13 +356,44 @@ extension Decimal128 {
   }
 
   @inlinable
+  internal var _isFiniteNonzero: Bool {
+    @inline(__always) get {
+      guard _combinationBitPattern < 0x18000 else { return false }
+      // Having excluded all values where the combination field begins `11...`,
+      // we know the represented significand is in the lower 113 bits.
+      let c = bitPattern & (1 &<< 113 &- 1)
+      return c > 0 as UInt128 && c < 10_000_000_000_000_000_000_000_000_000_000_000
+    }
+  }
+
+  @inlinable
   public var isSubnormal: Bool {
-    @inline(__always) get { false }
+    // We don't need to consider separately values where the combination field
+    // begins `11...`, because all such values are either treated as zero or
+    // aren't finite, and therefore all aren't subnormal.
+    let e = _combinationBitPattern &>> 3
+    guard e < 33 else { return false }
+    // By now, we know the represented significand is in the lower 113 bits.
+    let c = bitPattern & (1 &<< 113 &- 1)
+    // We don't need to consider noncanonical representations of zero separately
+    // because their significand bit pattern would be necessary greater than the
+    // upper limit we're testing for.
+    return c > 0 as UInt128 && c < UInt128._exp10(33 - Int(e))
   }
 
   @inlinable
   public var isNormal: Bool {
-    @inline(__always) get { isFinite }
+    let g = _combinationBitPattern
+    guard g < 0x18000 else { return false }
+
+    let e = g &>> 3
+    // By now, we know the represented significand is in the lower 113 bits.
+    let c = bitPattern & (1 &<< 113 &- 1)
+    guard e < 33 else {
+      // If the exponent isn't small, the value is normal if it's nonzero.
+      return c > 0 as UInt128 && c < 10_000_000_000_000_000_000_000_000_000_000_000
+    }
+    return c >= UInt128._exp10(33 - Int(e))
   }
 
   @inlinable
@@ -369,17 +408,6 @@ extension Decimal128 {
     let c = bitPattern & (1 &<< 113 &- 1)
     return c == 0 || c > 9_999_999_999_999_999_999_999_999_999_999_999 as UInt128
   }
-
-  @inlinable
-  internal var _isFiniteNonzero: Bool {
-    @inline(__always) get {
-      guard _combinationBitPattern < 0x18000 else { return false }
-      // Having excluded all values where the combination field begins `11...`,
-      // we know the represented significand is in the lower 113 bits.
-      let c = bitPattern & (1 &<< 113 &- 1)
-      return c > 0 as UInt128 && c < 10_000_000_000_000_000_000_000_000_000_000_000
-    }
-  }
 }
 
 @available(macOS 15.0, *)
@@ -391,6 +419,7 @@ extension Decimal128 {
         sign: sign,
         exponentBitPattern: exponentBitPattern,
         significandBitPattern: 1)
+      // TODO: Does this operation signal underflow if the result is subnormal?
     } else {
       Self(bitPattern: bitPattern & Self.nan.bitPattern)
     }
@@ -466,7 +495,8 @@ extension Decimal128: Equatable {
 
 @available(macOS 15.0, *)
 extension Decimal128: Hashable {
-  /// Returns the result of adding +0 to the value.
+  /// Returns the result of adding +0 to the value without signaling any
+  /// floating-point exceptions.
   ///
   /// The +0 operand is represented with the least possible exponent, so the
   /// result is represented with the least possible exponent.
@@ -474,7 +504,6 @@ extension Decimal128: Hashable {
   internal func _addingZeroWithLeastQuantum() -> Self {
     guard _isFiniteNonzero else {
       if isNaN {
-        if isSignalingNaN { _signal(.invalid) }
         // Note that `mask` will clear the signaling bit, silencing sNaN.
         var mask: UInt128 = 0x3f000 &<< 110
         // Preserve the payload (i.e., trailing significand bit pattern) only if
@@ -525,13 +554,13 @@ extension Decimal128: Comparable {
   @inlinable
   public static func < (lhs: Self, rhs: Self) -> Bool {
     if lhs.bitPattern == rhs.bitPattern {
-      if lhs.isSignalingNaN { _signal(.invalid) }
+      if lhs.isNaN { _signal(.invalid) }
       return false
     }
 
     guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
       if lhs.isNaN || rhs.isNaN {
-        if lhs.isSignalingNaN || rhs.isSignalingNaN { _signal(.invalid) }
+        _signal(.invalid)
         return false
       }
 
@@ -586,7 +615,7 @@ extension Decimal128: Comparable {
   @inlinable
   public static func <= (lhs: Self, rhs: Self) -> Bool {
     if lhs.isNaN || rhs.isNaN {
-      if lhs.isSignalingNaN || rhs.isSignalingNaN { _signal(.invalid) }
+      _signal(.invalid)
       return false
     }
     return !(rhs < lhs)
@@ -595,7 +624,7 @@ extension Decimal128: Comparable {
   @inlinable
   public static func >= (lhs: Self, rhs: Self) -> Bool {
     if lhs.isNaN || rhs.isNaN {
-      if lhs.isSignalingNaN || rhs.isSignalingNaN { _signal(.invalid) }
+      _signal(.invalid)
       return false
     }
     return !(lhs < rhs)
@@ -641,7 +670,10 @@ extension Decimal128: AdditiveArithmetic {
 @available(macOS 15.0, *)
 extension Decimal128: Numeric {
   @inlinable
-  public static func * (lhs: Self, rhs: Self) -> Self {
+  public func multiplied(
+    by rhs: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) -> Self {
+    let lhs = self
     let isSignMinus = lhs._isSignMinus != rhs._isSignMinus
 
     guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
@@ -687,15 +719,32 @@ extension Decimal128: Numeric {
   }
 
   @inlinable
+  @inline(__always)
+  public static func * (lhs: Self, rhs: Self) -> Self {
+    lhs.multiplied(by: rhs)
+  }
+
+  @inlinable
+  @inline(__always)
   public static func *= (lhs: inout Self, rhs: Self) {
     lhs = lhs * rhs
   }
 
   @inlinable
-  public init?<T>(exactly source: T) where T : BinaryInteger {
-    fatalError("Not implemented")
+  public init?<T: BinaryInteger>(exactly source: T) {
+    let magnitude = source.magnitude
+    let max = 9_999_999_999_999_999_999_999_999_999_999_999 as UInt128
+    guard magnitude.bitWidth < 113 || magnitude <= max else {
+      fatalError("Potentially inexact integer conversion not implemented")
+    }
+    bitPattern = UInt128(truncatingIfNeeded: magnitude)
+    bitPattern |= Self().bitPattern
+    if source < (0 as T) { self.negate() }
   }
 }
+
+@available(macOS 15.0, *)
+extension Decimal128: SignedNumeric { }
 
 @available(macOS 15.0, *)
 extension Decimal128: CustomStringConvertible {
