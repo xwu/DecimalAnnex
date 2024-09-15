@@ -2,6 +2,31 @@ import XCTest
 @testable import DecimalAnnex
 
 final class DecimalAnnexTests: XCTestCase {
+  func testDPD() throws {
+    let fixture: [(decoded: UInt16, encoded: UInt16)] = [
+      // Collated from online sources.
+      (decoded:   5, encoded: 0b000_000_0101),
+      (decoded:   9, encoded: 0b000_000_1001),
+      (decoded:  55, encoded: 0b000_101_0101),
+      (decoded:  63, encoded: 0b000_110_0011),
+      (decoded:  79, encoded: 0b000_111_1001),
+      (decoded:  80, encoded: 0b000_000_1010),
+      (decoded:  90, encoded: 0b000_001_1010),
+      (decoded:  98, encoded: 0b000_101_1110),
+      (decoded:  99, encoded: 0b000_101_1111),
+      (decoded: 555, encoded: 0b101_101_0101),
+      (decoded: 592, encoded: 0b101_011_1010),
+      (decoded: 879, encoded: 0b110_011_1111),
+      (decoded: 941, encoded: 0b001_100_1101),
+      (decoded: 986, encoded: 0b111_000_1110),
+      (decoded: 999, encoded: 0b001_111_1111),
+    ]
+    for (d, e) in fixture {
+      XCTAssertEqual(d, _DPD.decode(e))
+      XCTAssertEqual(_DPD.encode(d), e)
+    }
+  }
+
   func testLog10() throws {
     guard #available (macOS 15.0, *) else { return }
 
