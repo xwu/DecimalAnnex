@@ -27,6 +27,20 @@ final class DecimalAnnexTests: XCTestCase {
     }
   }
 
+  func testUInt256() throws {
+    guard #available (macOS 15.0, *) else { return }
+    do {
+      let lhs = _UInt256("2369676578372158364766242369061213561181961479062237766620")!
+      let rhs = _UInt256("102797312405202436815976773795958969482")!
+      XCTAssertEqual(String(lhs / rhs), "23051931251193218442")
+    }
+    do {
+      let lhs = _UInt256("96467201117289166187766181030232879447148862859323917044548749804018359008044")!
+      let rhs = _UInt256("4646260627574879223760172113656436161581617773435991717024")!
+      XCTAssertEqual(String(lhs / rhs), "20762331011904583253")
+    }
+  }
+
   func testLog10() throws {
     guard #available (macOS 15.0, *) else { return }
 

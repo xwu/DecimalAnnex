@@ -5,7 +5,7 @@
 
 @available(macOS 15.0, *)
 @frozen
-public struct _UInt256 {
+public struct _UInt256: Sendable {
   @usableFromInline
   internal var _storage: (high: UInt128, low: UInt128)
 
@@ -45,7 +45,10 @@ extension _UInt256: ExpressibleByIntegerLiteral {
 @available(macOS 15.0, *)
 extension _UInt256: CustomStringConvertible {
   @inlinable
-  public var description: String { String(self, radix: 10) }
+  public var description: String {
+    // TODO: Optimize this implementation if it's used in practice.
+    return String(self, radix: 10)
+  }
 }
 
 @available(macOS 15.0, *)
@@ -109,43 +112,36 @@ extension _UInt256: Numeric {
 @available(macOS 15.0, *)
 extension _UInt256 {
   @frozen
-  public struct Words {
+  public struct Words: Sendable {
     @usableFromInline
-    internal var _high: UInt128.Words
+    internal var _value: _UInt256
 
-    @usableFromInline
-    internal var _low: UInt128.Words
-
-    @inlinable
+    @_transparent
     public init(_ value: _UInt256) {
-      precondition(128 % UInt.bitWidth == 0,
-        "Access to words is unsupported on this platform")
-      _high = value.high.words
-      _low = value.low.words
+      precondition(Int.bitWidth <= 128, "Access to words is unsupported on this platform")
+      _value = value
     }
   }
 }
 
 @available(macOS 15.0, *)
 extension _UInt256.Words: RandomAccessCollection {
-  @inlinable
+  @_transparent
   public var startIndex: Int { 0 }
 
-  @inlinable
+  @_transparent
   public var endIndex: Int { count }
 
-  @inlinable
-  public var count: Int {
-    assert(128 % UInt.bitWidth == 0)
-    return _low.count + _high.count
-  }
+  @_transparent
+  public var count: Int { (255 &+ UInt.bitWidth) / UInt.bitWidth }
 
-  @inlinable
   public subscript(_ i: Int) -> UInt {
-    assert(128 % UInt.bitWidth == 0)
-    return i < _low.count
-      ? _low[i + _low.startIndex]
-      : _high[i - _low.count + _high.startIndex]
+    @_transparent get {
+      precondition(i >= 0 && i < endIndex, "Index out of range")
+      var value = _value
+      value &>>= _UInt256(0, UInt128(i &* UInt.bitWidth))
+      return UInt(truncatingIfNeeded: value.low)
+    }
   }
 }
 
