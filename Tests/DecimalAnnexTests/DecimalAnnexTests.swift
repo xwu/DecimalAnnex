@@ -32,7 +32,7 @@ final class DecimalAnnexTests: XCTestCase {
 
     for _ in 0...65535 {
       let x = UInt128.random(in: 0...UInt128.max)
-      XCTAssertEqual(x._log10, String(x).count - 1)
+      XCTAssertEqual(x._commonLogarithm, String(x).count - 1)
     }
   }
 
