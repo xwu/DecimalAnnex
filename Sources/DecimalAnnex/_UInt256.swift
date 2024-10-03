@@ -44,10 +44,41 @@ extension _UInt256: ExpressibleByIntegerLiteral {
 
 @available(macOS 15.0, *)
 extension _UInt256: CustomStringConvertible {
+  @_transparent
+  @usableFromInline
+  internal func _quotientAndRemainderDividingBy10()
+  -> (quotient: Self, remainder: Self) {
+    let m = Self(
+      (0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC, 0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCD))
+    let q = multipliedFullWidth(by: m).high &>> 3
+    let r = self &- q &* 10
+    return (q, r)
+  }
+
   @inlinable
   public var description: String {
-    // TODO: Optimize this implementation if it's used in practice.
-    return String(self, radix: 10)
+    if high == 0 && low == 0 { return "0" }
+    return withUnsafeTemporaryAllocation(of: UInt8.self, capacity: 78) { buff in
+      var value = self, count = 0
+      while value != 0 {
+        let (q, r) = value._quotientAndRemainderDividingBy10()
+        buff.initializeElement(
+          at: count,
+          to: 48 /* '0' */ &+ UInt8(truncatingIfNeeded: r.low))
+        count += 1
+        value = q
+      }
+      // Reverse the initialized elements of `buff`.
+      var a = 0, b = count &- 1
+      while a < b {
+        buff.swapAt(a, b)
+        b -= 1
+        a += 1
+      }
+      return String(unsafeUninitializedCapacity: count) {
+        return $0.initialize(fromContentsOf: buff[..<count])
+      }
+    }
   }
 }
 
@@ -95,7 +126,7 @@ extension _UInt256: Numeric {
     self = result
   }
 
-  @inlinable
+  @_transparent
   public init?<T: BinaryInteger>(exactly source: T) {
     guard source >= (0 as T) else { return nil }
 
@@ -472,7 +503,7 @@ extension _UInt256: FixedWidthInteger {
   @_transparent
   public var byteSwapped: Self { Self(low.byteSwapped, high.byteSwapped) }
 
-  @inlinable
+  @_transparent
   public var words: Words { Words(self) }
 
   @_transparent
