@@ -1,3 +1,41 @@
+@available(macOS 15.0, *)
+extension UInt128 {
+  @inlinable
+  internal func _quotientAndRemainderDividingBy1e18()
+  -> (quotient: Self, remainder: Self) {
+    // See Granlund & Montgomery, PLDI '94; in particular, theorem 4.2.
+    //
+    // To compute the multiplier `m` and shift `s` for unsigned division by a
+    // fixed divisor `d` that isn't a power of 2, we require `a` < `m` ≤ `b`,
+    // where (using Python notation):
+    //
+    //   a = (2 ** s) // d
+    //   b = (2 ** s + 2 ** (s - w)) // d
+    //
+    // (`w` is the bit width of the unsigned type and `s` > `w`.)
+    //
+    // We find the smallest integer `s` from `w + 1` to `2 * w` such that
+    // `(a + 1) * d - (2 ** s) <= 2 ** (s - w)`. Then, `m` is equal to `a + 1`.
+    //
+    // Substituting `d = 1_000_000_000_000_000_000` and `w = 128` gives:
+    //
+    //   m = 392318858461667547739736838950479151007
+    //   s = 188
+    //
+    // This multiplier, of course, exceeds `UInt128.max`.
+    //
+    // Instead, since unsigned division by 10**18 is equivalent to right shift
+    // by 18 followed by unsigned division by 5**18, we'll perform a similar
+    // computation to find the multiplier and shift for unsigned division by
+    // 5**18. Note, in this case, that the maximum dividend is only 110 bits,
+    // so `w = 110`.
+    let m: Self = 748288838313422294120286634350737
+    let q = (self &>> 18).multipliedFullWidth(by: m).high &>> 23
+    let r = self &- q &* 1_000_000_000_000_000_000
+    return (q, r)
+  }
+}
+
 @frozen
 public enum _DPD { }
 
@@ -180,9 +218,7 @@ extension _DPD {
     // See also:
     // https://lemire.me/blog/2021/11/18/converting-integers-to-fix-digit-representations-quickly/
 
-    // FIXME: Open code this operation as multiplication and shift.
-    let (abcdef, ghijkm) =
-      significand.quotientAndRemainder(dividingBy: 1_000_000_000_000_000_000)
+    let (abcdef, ghijkm) = significand._quotientAndRemainderDividingBy1e18()
 
     let (abc, def) =
       UInt64(truncatingIfNeeded: abcdef)
