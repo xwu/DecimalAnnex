@@ -44,6 +44,17 @@ final class DecimalAnnexTests: XCTestCase {
       let rhs = _UInt256("4646260627574879223760172113656436161581617773435991717024")!
       XCTAssertEqual(String(lhs / rhs), "20762331011904583253")
     }
+    do {
+      for i in 0...255 {
+        let x = (1 as _UInt256) &<< i
+        XCTAssertEqual(x.description.utf8.count, x._commonLogarithm + 1)
+        XCTAssertEqual((x-1).description.utf8.count, (x-1)._commonLogarithm + 1)
+      }
+      for i in 0...77 {
+        XCTAssertEqual(_UInt256._exp10(i)._commonLogarithm, i)
+        XCTAssertEqual((_UInt256._exp10(i) - 1)._commonLogarithm, max(0, i - 1))
+      }
+    }
   }
 
   func testLog10() throws {

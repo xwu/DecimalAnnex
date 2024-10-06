@@ -3,32 +3,11 @@ extension UInt128 {
   @inlinable
   internal func _quotientAndRemainderDividingBy1e18()
   -> (quotient: Self, remainder: Self) {
-    // See Granlund & Montgomery, PLDI '94; in particular, theorem 4.2.
+    // See Granlund & Montgomery (1994); in particular, theorem 4.2.
     //
-    // To compute the multiplier `m` and shift `s` for unsigned division by a
-    // fixed divisor `d` that isn't a power of 2, we require `a` < `m` ≤ `b`,
-    // where (using Python notation):
-    //
-    //   a = (2 ** s) // d
-    //   b = (2 ** s + 2 ** (s - w)) // d
-    //
-    // (`w` is the bit width of the unsigned type and `s` > `w`.)
-    //
-    // We find the smallest integer `s` from `w + 1` to `2 * w` such that
-    // `(a + 1) * d - (2 ** s) <= 2 ** (s - w)`. Then, `m` is equal to `a + 1`.
-    //
-    // Substituting `d = 1_000_000_000_000_000_000` and `w = 128` gives:
-    //
-    //   m = 392318858461667547739736838950479151007
-    //   s = 188
-    //
-    // This multiplier, of course, exceeds `UInt128.max`.
-    //
-    // Instead, since unsigned division by 10**18 is equivalent to right shift
-    // by 18 followed by unsigned division by 5**18, we'll perform a similar
-    // computation to find the multiplier and shift for unsigned division by
-    // 5**18. Note, in this case, that the maximum dividend is only 110 bits,
-    // so `w = 110`.
+    // Here, we right shift the dividend by 18, then compute unsigned division
+    // by 5**18 using multiplication and shift. Note, therefore, that the max
+    // dividend is only 110 bits wide.
     let m: Self = 748288838313422294120286634350737
     let q = (self &>> 18).multipliedFullWidth(by: m).high &>> 23
     let r = self &- q &* 1_000_000_000_000_000_000

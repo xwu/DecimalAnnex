@@ -12,7 +12,7 @@ extension UInt128 {
     // adding one) is at least the true floor log10.
     //
     // Meanwhile, we avoid using an even more precise approximation such as
-    // 39/128, because if we overestimate `(UInt128.max)._commonLogarithm` then
+    // 77/256, because if we overestimate `(UInt128.max)._commonLogarithm` then
     // we'll end up trying to compute `10 ** 39` while checking if our estimate
     // is off by one, which results in overflow.
     let estimate = ((19 &* (127 &- (self|1).leadingZeroBitCount)) &>> 6) &+ 1
@@ -692,6 +692,7 @@ extension Decimal128: Numeric {
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | lo)
       return isSignMinus ? -abs : abs
     }
+    
     fatalError("Not implemented")
   }
 

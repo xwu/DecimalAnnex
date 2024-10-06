@@ -515,3 +515,47 @@ extension _UInt256: FixedWidthInteger {
 
 @available(macOS 15.0, *)
 extension _UInt256: UnsignedInteger { }
+
+@available(macOS 15.0, *)
+extension _UInt256 {
+  @inlinable
+  internal var _commonLogarithm: Int {
+    // See comment in `UInt128._commonLogarithm`.
+    let estimate = ((77 &* (255 &- (self|1).leadingZeroBitCount)) &>> 8) &+ 1
+    return self >= _UInt256._exp10(estimate) ? estimate : estimate &- 1
+  }
+
+  @inlinable
+  internal static func _exp10(_ n: Int) -> Self {
+    precondition(n < 78, "Overflow in _exp10")
+    let table: [UInt64] = [
+                               1,
+                              10,
+                             100,
+                           1_000,
+                          10_000,
+                         100_000,
+                       1_000_000,
+                      10_000_000,
+                     100_000_000,
+                   1_000_000_000,
+                  10_000_000_000,
+                 100_000_000_000,
+               1_000_000_000_000,
+              10_000_000_000_000,
+             100_000_000_000_000,
+           1_000_000_000_000_000,
+          10_000_000_000_000_000,
+         100_000_000_000_000_000,
+       1_000_000_000_000_000_000,
+      10_000_000_000_000_000_000
+    ]
+    var n = n
+    var m = 1 as _UInt256
+    while n > 19 {
+      n &-= 19
+      m &*= 10_000_000_000_000_000_000
+    }
+    return n < 0 ? 0 : m &* _UInt256(0, UInt128(table[n]))
+  }
+}
