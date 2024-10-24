@@ -53,6 +53,12 @@ internal func _signal(_: _DecimalException) {
   // No-op (for now).
 }
 
+@inlinable
+internal func _signal<T: Numeric>(_: _DecimalException, `default`: T) -> T {
+  // No-op (for now).
+  return `default`
+}
+
 @frozen
 public struct _DecimalException: OptionSet {
   public let rawValue: UInt8
@@ -67,6 +73,7 @@ public struct _DecimalException: OptionSet {
   public static let underflow: _DecimalException        = Self(rawValue:  8)
   public static let inexact: _DecimalException          = Self(rawValue: 16)
 
+  public static let overflowInexact: _DecimalException  = [.overflow, .inexact]
   public static let underflowInexact: _DecimalException = [.underflow, .inexact]
 }
 
@@ -420,7 +427,7 @@ extension Decimal128 {
       _signal(.invalid)
       return .min
     }
-    return Int(exponentBitPattern) - 6176 +
+    return Int(exponentBitPattern) &- 6176 &+
       significandBitPattern._commonLogarithm
   }
 }
@@ -654,46 +661,187 @@ extension Decimal128: Numeric {
     let isSignMinus = lhs._isSignMinus != rhs._isSignMinus
 
     guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
+      if lhs.isSignalingNaN {
+        return _signal(.invalid, default: lhs._quiet._canonical)
+      }
+      if rhs.isSignalingNaN {
+        return _signal(.invalid, default: rhs._quiet._canonical)
+      }
+
       if lhs.isNaN {
-        if lhs.isSignalingNaN { _signal(.invalid) }
-        return lhs._quiet._canonical
+        return lhs._canonical
       }
       if rhs.isNaN {
-        if rhs.isSignalingNaN { _signal(.invalid) }
-        return rhs._quiet._canonical
+        return rhs._canonical
       }
 
       if lhs.isInfinite {
-        if rhs.isZero {
-          _signal(.invalid)
-          return .nan
-        }
+        if rhs.isZero { return _signal(.invalid, default: .nan) }
         return isSignMinus ? -.infinity : .infinity
       }
       if rhs.isInfinite {
-        if lhs.isZero {
-          _signal(.invalid)
-          return .nan
-        }
+        if lhs.isZero { return _signal(.invalid, default: .nan) }
         return isSignMinus ? -.infinity : .infinity
       }
 
-      let e = Int(lhs.exponentBitPattern) + Int(rhs.exponentBitPattern) - 6176
-      let z = Self(bitPattern: UInt128(truncatingIfNeeded: max(0, e)) &<< 113)
-      return isSignMinus ? -z : z
+      let e = Int(lhs.exponentBitPattern) &- 6176 &+ Int(rhs.exponentBitPattern)
+      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: max(e, 0)) &<< 113)
+      return isSignMinus ? -abs : abs
     }
 
-    let e = Int(lhs.exponentBitPattern) + Int(rhs.exponentBitPattern) - 6176
+    // Compute the intermediate result.
+    var e = Int(lhs.exponentBitPattern) &- 6176 &+ Int(rhs.exponentBitPattern)
     let (hi, lo) =
       lhs.significandBitPattern.multipliedFullWidth(
         by: rhs.significandBitPattern)
-    if e >= 0 && e <= 12287
-        && hi == 0 && lo <= 9_999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
-      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | lo)
+
+    // Remove decimal digits from intermediate result, if necessary.
+    // FIXME: Consider options to optimize division operations.
+    var pow, quo, rem: UInt128
+    if hi != 0 as UInt128 {
+      // See explanatory comment in `UInt128._commonLogarithm`.
+      // Note that here we underestimate.
+      var n = ((77 &* (255 &- hi.leadingZeroBitCount)) &>> 8) &- 33
+      pow = UInt128._exp10(n)
+      if (hi, lo) >=
+          pow.multipliedFullWidth(by: 10_000_000_000_000_000_000_000_000_000_000_000) {
+        n &+= 1
+        pow &*= 10
+      }
+      (quo, rem) = pow.dividingFullWidth((hi, lo))
+      e &+= n
+    } else if lo > 9_999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
+      var n = ((77 &* (127 &- (lo|1).leadingZeroBitCount)) &>> 8) &- 33
+      pow = UInt128._exp10(n)
+      if lo >= pow &* 10_000_000_000_000_000_000_000_000_000_000_000 {
+        n &+= 1
+        pow &*= 10
+      }
+      (quo, rem) = lo.quotientAndRemainder(dividingBy: pow)
+      e &+= n
+    } else {
+      pow = 1
+      (quo, rem) = (lo, 0)
+    }
+
+    guard e <= 12287 else {
+      // Overflow.
+      let x: Self = switch rule {
+      case .awayFromZero:
+        isSignMinus ? -.infinity : .infinity
+      case .down:
+        isSignMinus ? -.infinity : .greatestFiniteMagnitude
+      case .toNearestOrAwayFromZero:
+        isSignMinus ? -.infinity : .infinity
+      case .toNearestOrEven:
+        isSignMinus ? -.infinity : .infinity
+      case .towardZero:
+        isSignMinus ? -.greatestFiniteMagnitude : .greatestFiniteMagnitude
+      case .up:
+        isSignMinus ? -.greatestFiniteMagnitude : .infinity
+      @unknown default:
+        fatalError("Not implemented")
+      }
+      return _signal(.overflow, default: x)
+    }
+
+    guard e >= 0 else {
+      // Underflow.
+      let n = pow != 1 ? 33 : quo._commonLogarithm
+      let abs: Self
+      if n >= -e {
+        // Subnormal (or, after rounding, the least normal).
+        // FIXME: Consider options to optimize division operation.
+        let pow_ = UInt128._exp10(-e)
+        let (quo_, rem_) = quo.quotientAndRemainder(dividingBy: pow_)
+
+        if (rem_, rem) == (0, 0) {
+          // Under default exception handling, no underflow is signaled.
+          abs = Self(bitPattern: quo_)
+          return isSignMinus ? -abs : abs
+        }
+
+        let nextAway: Bool = switch rule {
+        case .awayFromZero:
+          true
+        case .down:
+          isSignMinus
+        case .toNearestOrAwayFromZero:
+          rem_ >= (pow_ &>> 1)
+        case .toNearestOrEven:
+          (quo_ & 1) == 0
+            ? (rem_, rem) > (pow_ &>> 1, 0 as UInt128)
+            : rem_ >= (pow_ &>> 1)
+        case .towardZero:
+          false
+        case .up:
+          !isSignMinus
+        @unknown default:
+          fatalError("Not implemented")
+        }
+        abs = Self(bitPattern: nextAway ? quo_ &+ 1 : quo_)
+      } else {
+        // Zero (or, after rounding, the least nonzero).
+        let nextAway: Bool = switch rule {
+        case .awayFromZero:
+          true
+        case .down:
+          isSignMinus
+        case .toNearestOrAwayFromZero:
+          n &+ 1 == -e && quo >= (UInt128._exp10(-e) &>> 1)
+        case .toNearestOrEven:
+          n &+ 1 == -e && (quo, rem) > (UInt128._exp10(-e) &>> 1, 0 as UInt128)
+        case .towardZero:
+          false
+        case .up:
+          !isSignMinus
+        @unknown default:
+          fatalError("Not implemented")
+        }
+        abs = Self(bitPattern: nextAway ? 1 : 0)
+      }
+      return _signal(.underflowInexact, default: isSignMinus ? -abs : abs)
+    }
+
+    if rem == 0 {
+      // Exact result.
+      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | quo)
       return isSignMinus ? -abs : abs
     }
-    
-    fatalError("Not implemented")
+
+    // Inexact.
+    let nextAway: Bool = switch rule {
+    case .awayFromZero:
+      true
+    case .down:
+      isSignMinus
+    case .toNearestOrAwayFromZero:
+      rem >= (pow &>> 1)
+    case .toNearestOrEven:
+      (quo & 1) == 0
+        ? rem > (pow &>> 1)
+        : rem >= (pow &>> 1)
+    case .towardZero:
+      false
+    case .up:
+      !isSignMinus
+    @unknown default:
+      fatalError("Not implemented")
+    }
+    if nextAway {
+      if quo == 9_999_999_999_999_999_999_999_999_999_999_999 {
+        if e == 12287 {
+          return _signal(
+            .overflowInexact, default: isSignMinus ? -.infinity : .infinity)
+        }
+        quo = 1_000_000_000_000_000_000_000_000_000_000_000
+        e &+= 1
+      } else {
+        quo &+= 1
+      }
+    }
+    let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | quo)
+    return _signal(.inexact, default: isSignMinus ? -abs : abs)
   }
 
   @inlinable
