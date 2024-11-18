@@ -695,8 +695,88 @@ extension Decimal128: Numeric {
       lhs.significandBitPattern.multipliedFullWidth(
         by: rhs.significandBitPattern)
 
+    // Per IEEE-754, detect tininess (i.e., underflow) before rounding.
+    let isTiny: Bool = if e < -34 {
+      true
+    } else if e < -5 {
+      hi == 0 || (hi, lo) <
+        UInt128._exp10(-e).multipliedFullWidth(
+          by: 1_000_000_000_000_000_000_000_000_000_000_000)
+    } else if e < 33 {
+      hi == 0 && lo < UInt128._exp10(33 &- e)
+    } else {
+      false
+    }
+
+    guard !isTiny else {
+      if e < -68 {
+        // The magnitude of the result is less than
+        // 1/2 * .leastNonzeroMagnitude.
+        let nextAway: Bool = switch rule {
+        case .awayFromZero:
+          true
+        case .down:
+          isSignMinus
+        case .toNearestOrAwayFromZero:
+          false
+        case .toNearestOrEven:
+          false
+        case .towardZero:
+          false
+        case .up:
+          !isSignMinus
+        @unknown default:
+          fatalError("Not implemented")
+        }
+        let abs = Self(bitPattern: nextAway ? 1 : 0)
+        return _signal(.underflowInexact, default: isSignMinus ? -abs : abs)
+      }
+
+      // Remove decimal digits from intermediate result.
+      let pow, quo, rem, rem_: UInt128
+      if e < -38 {
+        let _x = _UInt256(hi, lo)._quotientAndRemainderDividingBy1e38()
+        let quo_ = _x.quotient.low
+        rem_ = _x.remainder.low
+        pow = UInt128._exp10(-e &- 38)
+        (quo, rem) = quo_.quotientAndRemainder(dividingBy: pow)
+      } else {
+        rem_ = 0
+        pow = UInt128._exp10(-e)
+        (quo, rem) = pow.dividingFullWidth((hi, lo))
+      }
+
+      if (rem, rem_) == (0, 0) {
+        // Exact result.
+        // Under default exception handling, no underflow is signaled.
+        let abs = Self(bitPattern: quo)
+        return isSignMinus ? -abs : abs
+      }
+
+      // Inexact.
+      let nextAway: Bool = switch rule {
+      case .awayFromZero:
+        true
+      case .down:
+        isSignMinus
+      case .toNearestOrAwayFromZero:
+        rem >= (pow &>> 1)
+      case .toNearestOrEven:
+        (quo & 1) == 0
+        ? (rem, rem_) > (pow &>> 1, 0 as UInt128)
+        : rem >= (pow &>> 1)
+      case .towardZero:
+        false
+      case .up:
+        !isSignMinus
+      @unknown default:
+        fatalError("Not implemented")
+      }
+      let abs = Self(bitPattern: nextAway ? quo &+ 1 : quo)
+      return _signal(.underflowInexact, default: isSignMinus ? -abs : abs)
+    }
+
     // Remove decimal digits from intermediate result, if necessary.
-    // FIXME: Consider options to optimize division operations.
     var pow, quo, rem: UInt128
     if hi != 0 as UInt128 {
       // See explanatory comment in `UInt128._commonLogarithm`.
@@ -743,64 +823,6 @@ extension Decimal128: Numeric {
         fatalError("Not implemented")
       }
       return _signal(.overflow, default: x)
-    }
-
-    guard e >= 0 else {
-      // Underflow.
-      let n = pow != 1 ? 33 : quo._commonLogarithm
-      let abs: Self
-      if n >= -e {
-        // Subnormal (or, after rounding, the least normal).
-        // FIXME: Consider options to optimize division operation.
-        let pow_ = UInt128._exp10(-e)
-        let (quo_, rem_) = quo.quotientAndRemainder(dividingBy: pow_)
-
-        if (rem_, rem) == (0, 0) {
-          // Under default exception handling, no underflow is signaled.
-          abs = Self(bitPattern: quo_)
-          return isSignMinus ? -abs : abs
-        }
-
-        let nextAway: Bool = switch rule {
-        case .awayFromZero:
-          true
-        case .down:
-          isSignMinus
-        case .toNearestOrAwayFromZero:
-          rem_ >= (pow_ &>> 1)
-        case .toNearestOrEven:
-          (quo_ & 1) == 0
-            ? (rem_, rem) > (pow_ &>> 1, 0 as UInt128)
-            : rem_ >= (pow_ &>> 1)
-        case .towardZero:
-          false
-        case .up:
-          !isSignMinus
-        @unknown default:
-          fatalError("Not implemented")
-        }
-        abs = Self(bitPattern: nextAway ? quo_ &+ 1 : quo_)
-      } else {
-        // Zero (or, after rounding, the least nonzero).
-        let nextAway: Bool = switch rule {
-        case .awayFromZero:
-          true
-        case .down:
-          isSignMinus
-        case .toNearestOrAwayFromZero:
-          n &+ 1 == -e && quo >= (UInt128._exp10(-e) &>> 1)
-        case .toNearestOrEven:
-          n &+ 1 == -e && (quo, rem) > (UInt128._exp10(-e) &>> 1, 0 as UInt128)
-        case .towardZero:
-          false
-        case .up:
-          !isSignMinus
-        @unknown default:
-          fatalError("Not implemented")
-        }
-        abs = Self(bitPattern: nextAway ? 1 : 0)
-      }
-      return _signal(.underflowInexact, default: isSignMinus ? -abs : abs)
     }
 
     if rem == 0 {

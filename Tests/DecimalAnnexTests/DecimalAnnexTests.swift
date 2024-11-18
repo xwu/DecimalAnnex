@@ -55,6 +55,16 @@ final class DecimalAnnexTests: XCTestCase {
         XCTAssertEqual((_UInt256._exp10(i) - 1)._commonLogarithm, max(0, i - 1))
       }
     }
+    do {
+      for _ in 0..<100 {
+        let m = 100_000_000_000_000_000_000_000_000_000_000_000_000 as _UInt256
+        let x = _UInt256.random(in: m..<(m * m))
+        let (q, r) = x._quotientAndRemainderDividingBy1e38()
+        XCTAssertTrue(x.quotientAndRemainder(dividingBy: m) == (q, r))
+        XCTAssertTrue(
+          m.low.dividingFullWidth((x.high, x.low)) == (q.low, r.low))
+      }
+    }
   }
 
   func testLog10() throws {

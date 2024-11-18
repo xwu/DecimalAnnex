@@ -558,4 +558,13 @@ extension _UInt256 {
     }
     return n < 0 ? 0 : m &* _UInt256(0, UInt128(table[n]))
   }
+
+  @inlinable
+  internal func _quotientAndRemainderDividingBy1e38()
+  -> (quotient: Self, remainder: Self) {
+    let m = Self(0x3671F73B54F1C89565B9EF4, 0xD632412884B32926857A281A0E6A841B)
+    let q = (self &>> 38).multipliedFullWidth(by: m).high &>> 50
+    let r = self &- q &* 100_000_000_000_000_000_000_000_000_000_000_000_000
+    return (q, r)
+  }
 }
