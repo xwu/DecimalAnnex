@@ -480,7 +480,7 @@ extension Decimal128: Equatable {
 @available(macOS 15.0, *)
 extension Decimal128: Hashable {
   /// Returns the result of adding +0 to the value without signaling any
-  /// floating-point exceptions.
+  /// floating-point exceptions and using the default rounding mode.
   ///
   /// The +0 operand is represented with the least possible exponent, so the
   /// result is represented with the least possible exponent.
@@ -501,14 +501,14 @@ extension Decimal128: Hashable {
       if isInfinite {
         return Self(bitPattern: bitPattern & (0x3e000 &<< 110))
       }
-      // The result of adding +0 to ±0 is +0.
+      // The result of adding +0 to ±0 is +0 (using the default rounding mode).
       return Self(bitPattern: 0)
     }
 
     var e = exponentBitPattern
     guard e > 0 else { return self }
     var c = significandBitPattern
-    // Estimate log10(c). See `UInt128._log10` for a more detailed explanation.
+    // Estimate log10(c). See `UInt128._log10` for a detailed explanation.
     // It is important that this estimate be at least the true floor log10 and
     // at most one greater.
     let estimate = ((19 &* (127 &- (c|1).leadingZeroBitCount)) &>> 6) &+ 1
@@ -631,21 +631,109 @@ extension Decimal128: ExpressibleByIntegerLiteral {
 @available(macOS 15.0, *)
 extension Decimal128: AdditiveArithmetic {
   @inlinable
-  public static func + (lhs: Self, rhs: Self) -> Self {
+  public func adding(
+    _ rhs: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) -> Self {
+    var lhs = self, rhs = rhs
+
+    guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
+      if lhs.isSignalingNaN {
+        return _signal(.invalid, default: lhs._quiet._canonical)
+      }
+      if rhs.isSignalingNaN {
+        return _signal(.invalid, default: rhs._quiet._canonical)
+      }
+
+      if lhs.isNaN {
+        return lhs._canonical
+      }
+      if rhs.isNaN {
+        return rhs._canonical
+      }
+
+      if lhs.isInfinite {
+        let isSignMinus = lhs._isSignMinus
+        if rhs.isInfinite && isSignMinus != rhs._isSignMinus {
+          return _signal(.invalid, default: .nan)
+        }
+        return isSignMinus ? -.infinity : .infinity
+      }
+      if rhs.isInfinite {
+        return rhs._isSignMinus ? -.infinity : .infinity
+      }
+
+      if lhs.isZero {
+        if rhs.isZero {
+          // Adding ±0 and ±0. See IEEE-754 §6.3.
+          let isSignMinus = rule == .down
+            ? lhs._isSignMinus || rhs._isSignMinus
+            : lhs._isSignMinus && rhs._isSignMinus
+          let e = min(lhs.exponentBitPattern, rhs.exponentBitPattern)
+          let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113)
+          return isSignMinus ? -abs : abs
+        }
+        // Swap operands so that `lhs` is nonzero and `rhs` is zero.
+        swap(&lhs, &rhs)
+      }
+      var e1 = lhs.exponentBitPattern
+      let e2 = rhs.exponentBitPattern
+      guard e1 > e2 else { return lhs }
+      var c1 = lhs.significandBitPattern
+      // Estimate log10(c). See `UInt128._log10` for a detailed explanation.
+      // It is important that this estimate be at least the true floor log10 and
+      // at most one greater.
+      let estimate = ((19 &* (127 &- (c1|1).leadingZeroBitCount)) &>> 6) &+ 1
+      let n = min(e1 &- e2, UInt(max(0, 33 &- estimate)))
+      if n > 0 {
+        c1 &*= UInt128._exp10(Int(n))
+        e1 &-= n
+      }
+      if e1 > e2 && c1 <= 999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
+        c1 &*= 10
+        e1 &-= 1
+      }
+      return Self(
+        sign: lhs.sign, exponentBitPattern: e1, significandBitPattern: c1)
+    }
+
+    var e1 = lhs.exponentBitPattern
+    var e2 = rhs.exponentBitPattern
+    if e1 < e2 {
+      swap(&lhs, &rhs)
+      swap(&e1, &e2)
+    }
+    // ...
     fatalError("Not implemented")
   }
 
   @inlinable
+  @inline(__always)
+  public func subtracting(
+    _ rhs: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) -> Self {
+    adding(-rhs, rounding: rule)
+  }
+
+  @inlinable
+  @inline(__always)
+  public static func + (lhs: Self, rhs: Self) -> Self {
+    lhs.adding(rhs)
+  }
+
+  @inlinable
+  @inline(__always)
   public static func += (lhs: inout Self, rhs: Self) {
     lhs = lhs + rhs
   }
 
   @inlinable
+  @inline(__always)
   public static func - (lhs: Self, rhs: Self) -> Self {
-    fatalError("Not implemented")
+    lhs.subtracting(rhs)
   }
 
   @inlinable
+  @inline(__always)
   public static func -= (lhs: inout Self, rhs: Self) {
     lhs = lhs - rhs
   }
