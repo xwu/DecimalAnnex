@@ -49,8 +49,15 @@ extension UInt128 {
 }
 
 @inlinable
-internal func _signal(_: _DecimalException) {
+internal func _signal(_: _DecimalException, `default`: Bool) -> Bool {
   // No-op (for now).
+  return `default`
+}
+
+@inlinable
+internal func _signal(_: _DecimalException, `default`: String) -> String {
+  // No-op (for now).
+  return `default`
 }
 
 @inlinable
@@ -395,17 +402,78 @@ extension Decimal128 {
 
 @available(macOS 15.0, *)
 extension Decimal128 {
+  public var decade: Self {
+    guard isFinite else { return .nan }
+
+    fatalError("Not implemented")
+  }
+
+  public var nextUp: Self {
+    fatalError("Not implemented")
+  }
+
+  @inlinable
+  public var nextDown: Self {
+    @inline(__always) get { -(-self).nextUp }
+  }
+
+  @inlinable
+  public var ulp: Self {
+    guard isFinite else { return .nan }
+    return Self(
+      sign: sign,
+      exponentBitPattern: exponentBitPattern,
+      significandBitPattern: 1)
+  }
+
   @inlinable
   public var quantum: Self {
-    if isFinite {
-      Self(
-        sign: sign,
-        exponentBitPattern: exponentBitPattern,
-        significandBitPattern: 1)
-      // TODO: Does this operation signal underflow if the result is subnormal?
-    } else {
-      Self(bitPattern: bitPattern & Self.nan.bitPattern)
+    guard isFinite else {
+      // TODO: Does this operation signal invalid if the operand is sNaN?
+      return Self(bitPattern: bitPattern & Self.nan.bitPattern)
     }
+    // TODO: Does this operation signal underflow if the result is subnormal?
+    return Self(
+      sign: sign,
+      exponentBitPattern: exponentBitPattern,
+      significandBitPattern: 1)
+  }
+
+  public func quantized(
+    by other: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) -> Self {
+    guard _isFiniteNonzero else {
+      if isSignalingNaN {
+        return _signal(.invalid, default: _quiet._canonical)
+      }
+      if other.isSignalingNaN {
+        return _signal(.invalid, default: other._quiet._canonical)
+      }
+
+      if isNaN {
+        return _canonical
+      }
+      if other.isNaN {
+        return other._canonical
+      }
+
+      if isInfinite {
+        if other.isInfinite { return _isSignMinus ? -.infinity : .infinity }
+        return _signal(.invalid, default: .nan)
+      }
+      if other.isInfinite {
+        return _signal(.invalid, default: .nan)
+      }
+
+      if isZero {
+        return Self(
+          sign: sign,
+          exponentBitPattern: other.exponentBitPattern,
+          significandBitPattern: 0)
+      }
+      fatalError("Not implemented")
+    }
+    fatalError("Not implemented")
   }
 
   @inlinable
@@ -420,15 +488,27 @@ extension Decimal128 {
   @inlinable
   public var exponent: Int {
     guard isFinite else {
-      _signal(.invalid)
-      return .max
+      return _signal(.invalid, default: .max)
     }
     guard !isZero else {
-      _signal(.invalid)
-      return .min
+      return _signal(.invalid, default: .min)
     }
     return Int(exponentBitPattern) &- 6176 &+
       significandBitPattern._commonLogarithm
+  }
+
+  @inlinable
+  public var significand: Self {
+    guard isFinite else { return _canonical }
+    guard !isZero else { return Self() }
+    let c = significandBitPattern
+    let e = 6176 &- c._commonLogarithm
+    return Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | c)
+  }
+
+  public init(sign: FloatingPointSign, exponent: Int, significand: Self) {
+    // scaleB
+    fatalError("Not implemented")
   }
 }
 
@@ -437,13 +517,20 @@ extension Decimal128: Equatable {
   @inlinable
   public static func == (lhs: Self, rhs: Self) -> Bool {
     if lhs.bitPattern == rhs.bitPattern {
-      if lhs.isSignalingNaN { _signal(.invalid) }
-      return !lhs.isNaN
+      if lhs.isNaN {
+        if lhs.isSignalingNaN {
+          return _signal(.invalid, default: false)
+        }
+        return false
+      }
+      return true
     }
 
     guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
       if lhs.isNaN || rhs.isNaN {
-        if lhs.isSignalingNaN || rhs.isSignalingNaN { _signal(.invalid) }
+        if lhs.isSignalingNaN || rhs.isSignalingNaN {
+          return _signal(.invalid, default: false)
+        }
         return false
       }
 
@@ -538,14 +625,15 @@ extension Decimal128: Comparable {
   @inlinable
   public static func < (lhs: Self, rhs: Self) -> Bool {
     if lhs.bitPattern == rhs.bitPattern {
-      if lhs.isNaN { _signal(.invalid) }
+      if lhs.isNaN {
+        return _signal(.invalid, default: false)
+      }
       return false
     }
 
     guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
       if lhs.isNaN || rhs.isNaN {
-        _signal(.invalid)
-        return false
+        return _signal(.invalid, default: false)
       }
 
       if lhs.isInfinite {
@@ -599,8 +687,7 @@ extension Decimal128: Comparable {
   @inlinable
   public static func <= (lhs: Self, rhs: Self) -> Bool {
     if lhs.isNaN || rhs.isNaN {
-      _signal(.invalid)
-      return false
+      return _signal(.invalid, default: false)
     }
     return !(rhs < lhs)
   }
@@ -608,8 +695,7 @@ extension Decimal128: Comparable {
   @inlinable
   public static func >= (lhs: Self, rhs: Self) -> Bool {
     if lhs.isNaN || rhs.isNaN {
-      _signal(.invalid)
-      return false
+      return _signal(.invalid, default: false)
     }
     return !(lhs < rhs)
   }
@@ -696,11 +782,22 @@ extension Decimal128: AdditiveArithmetic {
         sign: lhs.sign, exponentBitPattern: e1, significandBitPattern: c1)
     }
 
+    let isAway = lhs._isSignMinus == rhs._isSignMinus
+
     var e1 = lhs.exponentBitPattern
     var e2 = rhs.exponentBitPattern
     if e1 < e2 {
       swap(&lhs, &rhs)
       swap(&e1, &e2)
+    }
+
+    let c1 = lhs.significandBitPattern
+    let c2 = rhs.significandBitPattern
+    let logc1 = c1._commonLogarithm
+    let logc2 = c2._commonLogarithm
+    if Int(e1 &- e2) &+ (logc1 &- logc2) > 33 {
+      // ...
+      if isAway { /* ... */ }
     }
     // ...
     fatalError("Not implemented")
@@ -820,7 +917,7 @@ extension Decimal128: Numeric {
         return _signal(.underflowInexact, default: isSignMinus ? -abs : abs)
       }
 
-      // Remove decimal digits from intermediate result.
+      // Remove decimal digits from intermediate result, if necessary.
       let pow, quo, rem, rem_: UInt128
       if e < -38 {
         let _x = _UInt256(hi, lo)._quotientAndRemainderDividingBy1e38()
@@ -828,16 +925,22 @@ extension Decimal128: Numeric {
         rem_ = _x.remainder.low
         pow = UInt128._exp10(-e &- 38)
         (quo, rem) = quo_.quotientAndRemainder(dividingBy: pow)
-      } else {
+        e = 0
+      } else if e < 0 {
         rem_ = 0
         pow = UInt128._exp10(-e)
         (quo, rem) = pow.dividingFullWidth((hi, lo))
+        e = 0
+      } else {
+        rem_ = 0
+        pow = 1
+        (quo, rem) = (lo, 0)
       }
 
       if (rem, rem_) == (0, 0) {
         // Exact result.
         // Under default exception handling, no underflow is signaled.
-        let abs = Self(bitPattern: quo)
+        let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | quo)
         return isSignMinus ? -abs : abs
       }
 
@@ -860,6 +963,7 @@ extension Decimal128: Numeric {
       @unknown default:
         fatalError("Not implemented")
       }
+      assert(e == 0)
       let abs = Self(bitPattern: nextAway ? quo &+ 1 : quo)
       return _signal(.underflowInexact, default: isSignMinus ? -abs : abs)
     }
@@ -981,6 +1085,173 @@ extension Decimal128: Numeric {
 
 @available(macOS 15.0, *)
 extension Decimal128: SignedNumeric { }
+
+@available(macOS 15.0, *)
+extension Decimal128: Strideable {
+  @inlinable
+  public func distance(to other: Self) -> Self { other - self }
+
+  @inlinable
+  public func advanced(by n: Self) -> Self { self + n }
+}
+
+@available(macOS 15.0, *)
+extension Decimal128 {
+  public init<T: BinaryInteger>(_ source: T) {
+    fatalError("Not implemented")
+  }
+
+  public init?(exactly source: Float16) {
+    fatalError("Not implemented")
+  }
+
+  public init?(exactly source: Float) {
+    fatalError("Not implemented")
+  }
+
+  public init?(exactly source: Double) {
+    fatalError("Not implemented")
+  }
+
+  public init?<T: BinaryFloatingPoint>(exactly source: T) {
+    fatalError("Not implemented")
+  }
+
+  public init(_ source: Float16) {
+    fatalError("Not implemented")
+  }
+
+  public init(_ source: Float) {
+    fatalError("Not implemented")
+  }
+
+  public init(_ source: Double) {
+    fatalError("Not implemented")
+  }
+
+  public init<T: BinaryFloatingPoint>(_ source: T) {
+    fatalError("Not implemented")
+  }
+
+  // TODO: Conversion from `Decimal128` to binary integer or floating point.
+}
+
+@available(macOS 15.0, *)
+extension Decimal128: FloatingPoint {
+  @_transparent
+  public func isEqual(to other: Self) -> Bool { self == other }
+
+  @_transparent
+  public func isLess(than other: Self) -> Bool { self < other }
+
+  @_transparent
+  public func isLessThanOrEqualTo(_ other: Self) -> Bool { self <= other }
+
+  public func isTotallyOrdered(belowOrEqualTo other: Self) -> Bool {
+    fatalError("Not implemented")
+  }
+
+  public func addingProduct(
+    _ lhs: Self, _ rhs: Self, rounding rule: FloatingPointRoundingRule
+  ) -> Self {
+    fatalError("Not implemented")
+  }
+
+  @inlinable
+  @inline(__always)
+  public mutating func addProduct(
+    _ lhs: Self, _ rhs: Self, rounding rule: FloatingPointRoundingRule
+  ) {
+    self = addingProduct(lhs, rhs, rounding: rule)
+  }
+
+  @inlinable
+  @inline(__always)
+  public func addingProduct(_ lhs: Self, _ rhs: Self) -> Self {
+    addingProduct(lhs, rhs, rounding: .toNearestOrEven)
+  }
+
+  @inlinable
+  @inline(__always)
+  public mutating func addProduct(_ lhs: Self, _ rhs: Self) {
+    self = addingProduct(lhs, rhs)
+  }
+
+  public func divided(
+    by rhs: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) -> Self {
+    fatalError("Not implemented")
+  }
+
+  @inlinable
+  @inline(__always)
+  public static func / (lhs: Self, rhs: Self) -> Self {
+    lhs.divided(by: rhs)
+  }
+
+  @inlinable
+  @inline(__always)
+  public static func /= (lhs: inout Self, rhs: Self) {
+    lhs = lhs / rhs
+  }
+
+  public func remainder(dividingBy other: Self) -> Self {
+    fatalError("Not implemented")
+  }
+
+  @inlinable
+  @inline(__always)
+  public mutating func formRemainder(dividingBy other: Self) {
+    self = remainder(dividingBy: other)
+  }
+
+  public func truncatingRemainder(dividingBy other: Self) -> Self {
+    fatalError("Not implemented")
+  }
+
+  @inlinable
+  @inline(__always)
+  public mutating func formTruncatingRemainder(dividingBy other: Self) {
+    self = truncatingRemainder(dividingBy: other)
+  }
+
+  public func squareRoot(rounding rule: FloatingPointRoundingRule) -> Self {
+    fatalError("Not implemented")
+  }
+
+  @inlinable
+  @inline(__always)
+  public mutating func formSquareRoot(
+    rounding rule: FloatingPointRoundingRule
+  ) {
+    self = squareRoot(rounding: rule)
+  }
+
+  @inlinable
+  @inline(__always)
+  public func squareRoot() -> Self {
+    squareRoot(rounding: .toNearestOrEven)
+  }
+
+  @inlinable
+  @inline(__always)
+  public mutating func formSquareRoot() {
+    self = squareRoot()
+  }
+
+  public func rounded(_ rule: FloatingPointRoundingRule) -> Self {
+    if isSignalingNaN {
+      return _signal(.invalid, default: _quiet._canonical)
+    }
+    fatalError("Not implemented")
+  }
+
+  @inlinable
+  @inline(__always)
+  public mutating func round(_ rule: FloatingPointRoundingRule) {
+    self = rounded(rule)
+  }
+}
 
 @available(macOS 15.0, *)
 extension Decimal128 {
@@ -1135,18 +1406,24 @@ extension Decimal128 {
 @available(macOS 15.0, *)
 extension Decimal128: CustomStringConvertible {
   public var description: String {
-    if isNaN {
-      return _isSignMinus ? "-nan" : "nan"
-    }
+    guard _isFiniteNonzero else {
+      if isSignalingNaN {
+        return _signal(.invalid, default: _isSignMinus ? "-nan" : "nan")
+      }
 
-    if isInfinite {
-      return _isSignMinus ? "-inf" : "inf"
-    }
+      if isNaN {
+        return _isSignMinus ? "-nan" : "nan"
+      }
 
-    if isZero {
+      if isInfinite {
+        return _isSignMinus ? "-inf" : "inf"
+      }
+
+      // TODO: Decide if we want to preserve quantum.
       return _isSignMinus ? "-0.0" : "0.0"
     }
 
+    // TODO: Re-implement.
     return String(unsafeUninitializedCapacity: 42) { buffer in
       // We'll keep track of the index of the first uninitialized element, which
       // we'll need to eventually return as the intiailized count.
@@ -1176,8 +1453,7 @@ extension Decimal128: CustomStringConvertible {
           index = buffer[index...].initialize(fromContentsOf: $0[..<x])
           buffer.initializeElement(at: index, to: 46 /* '.' */)
           if x == count {
-            buffer.initializeElement(at: index + 1, to: 48 /* '0' */)
-            index += 2
+            index += 1
           } else {
             index = buffer[(index + 1)...].initialize(fromContentsOf: $0[x...])
           }
@@ -1216,5 +1492,12 @@ extension Decimal128: CustomStringConvertible {
       }
       return index
     }
+  }
+}
+
+@available(macOS 15.0, *)
+extension Decimal128: LosslessStringConvertible {
+  public init?<T: StringProtocol>(_ description: T) {
+    fatalError("Not implemented")
   }
 }

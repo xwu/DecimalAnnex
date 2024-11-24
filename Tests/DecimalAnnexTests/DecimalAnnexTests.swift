@@ -136,14 +136,14 @@ final class DecimalAnnexTests: XCTestCase {
     guard #available(macOS 15.0, *) else { return }
 
     // As a concession to the idiosyncrasies of float literals, we will write
-    // an extra ".0" at the end of integral values in order to hint that these
-    // are floating-point values, even when there's not actually that extra
+    // "." at the end of integral values in order to hint that these are
+    // floating-point values, even when there's not actually that extra
     // significant figure in the encoding.
     let y = Decimal128(
       _sign: .minus,
       combinationBitPattern: 6176 << 3,
       trailingSignificandBitPattern: 1)
-    XCTAssertEqual(y.description, "-1.0")
+    XCTAssertEqual(y.description, "-1.")
 
     // Otherwise, though, we don't take the special code paths to avoid
     // scientific notation if there's not enough significant figures, and we
