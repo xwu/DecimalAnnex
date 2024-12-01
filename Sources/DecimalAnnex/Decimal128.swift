@@ -49,6 +49,11 @@ extension UInt128 {
 }
 
 @inlinable
+internal func _signal(_: _DecimalException) {
+  // No-op (for now).
+}
+
+@inlinable
 internal func _signal(_: _DecimalException, `default`: Bool) -> Bool {
   // No-op (for now).
   return `default`
@@ -717,168 +722,15 @@ extension Decimal128: ExpressibleByIntegerLiteral {
 @available(macOS 15.0, *)
 extension Decimal128: AdditiveArithmetic {
   @inlinable
-  public func adding(
-    _ rhs: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  @inline(__always)
+  internal static func _round(
+    _ isSignMinus: Bool,
+    _ biasedExponent: Int,
+    _ significand: (high: UInt128, low: UInt128),
+    _ rule: FloatingPointRoundingRule
   ) -> Self {
-    var lhs = self, rhs = rhs
-
-    guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
-      if lhs.isSignalingNaN {
-        return _signal(.invalid, default: lhs._quiet._canonical)
-      }
-      if rhs.isSignalingNaN {
-        return _signal(.invalid, default: rhs._quiet._canonical)
-      }
-
-      if lhs.isNaN {
-        return lhs._canonical
-      }
-      if rhs.isNaN {
-        return rhs._canonical
-      }
-
-      if lhs.isInfinite {
-        let isSignMinus = lhs._isSignMinus
-        if rhs.isInfinite && isSignMinus != rhs._isSignMinus {
-          return _signal(.invalid, default: .nan)
-        }
-        return isSignMinus ? -.infinity : .infinity
-      }
-      if rhs.isInfinite {
-        return rhs._isSignMinus ? -.infinity : .infinity
-      }
-
-      if lhs.isZero {
-        if rhs.isZero {
-          // Adding ±0 and ±0. See IEEE-754 §6.3.
-          let isSignMinus = rule == .down
-            ? lhs._isSignMinus || rhs._isSignMinus
-            : lhs._isSignMinus && rhs._isSignMinus
-          let e = min(lhs.exponentBitPattern, rhs.exponentBitPattern)
-          let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113)
-          return isSignMinus ? -abs : abs
-        }
-        // Swap operands so that `lhs` is nonzero and `rhs` is zero.
-        swap(&lhs, &rhs)
-      }
-      var e1 = lhs.exponentBitPattern
-      let e2 = rhs.exponentBitPattern
-      guard e1 > e2 else { return lhs }
-      var c1 = lhs.significandBitPattern
-      // Estimate log10(c). See `UInt128._log10` for a detailed explanation.
-      // It is important that this estimate be at least the true floor log10 and
-      // at most one greater.
-      let estimate = ((19 &* (127 &- (c1|1).leadingZeroBitCount)) &>> 6) &+ 1
-      let n = min(e1 &- e2, UInt(max(0, 33 &- estimate)))
-      if n > 0 {
-        c1 &*= UInt128._exp10(Int(n))
-        e1 &-= n
-      }
-      if e1 > e2 && c1 <= 999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
-        c1 &*= 10
-        e1 &-= 1
-      }
-      return Self(
-        sign: lhs.sign, exponentBitPattern: e1, significandBitPattern: c1)
-    }
-
-    let isAway = lhs._isSignMinus == rhs._isSignMinus
-
-    var e1 = lhs.exponentBitPattern
-    var e2 = rhs.exponentBitPattern
-    if e1 < e2 {
-      swap(&lhs, &rhs)
-      swap(&e1, &e2)
-    }
-
-    let c1 = lhs.significandBitPattern
-    let c2 = rhs.significandBitPattern
-    let logc1 = c1._commonLogarithm
-    let logc2 = c2._commonLogarithm
-    if Int(e1 &- e2) &+ (logc1 &- logc2) > 33 {
-      // ...
-      if isAway { /* ... */ }
-    }
-    // ...
-    fatalError("Not implemented")
-  }
-
-  @inlinable
-  @inline(__always)
-  public func subtracting(
-    _ rhs: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
-  ) -> Self {
-    adding(-rhs, rounding: rule)
-  }
-
-  @inlinable
-  @inline(__always)
-  public static func + (lhs: Self, rhs: Self) -> Self {
-    lhs.adding(rhs)
-  }
-
-  @inlinable
-  @inline(__always)
-  public static func += (lhs: inout Self, rhs: Self) {
-    lhs = lhs + rhs
-  }
-
-  @inlinable
-  @inline(__always)
-  public static func - (lhs: Self, rhs: Self) -> Self {
-    lhs.subtracting(rhs)
-  }
-
-  @inlinable
-  @inline(__always)
-  public static func -= (lhs: inout Self, rhs: Self) {
-    lhs = lhs - rhs
-  }
-}
-
-@available(macOS 15.0, *)
-extension Decimal128: Numeric {
-  @inlinable
-  public func multiplied(
-    by rhs: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
-  ) -> Self {
-    let lhs = self
-    let isSignMinus = lhs._isSignMinus != rhs._isSignMinus
-
-    guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
-      if lhs.isSignalingNaN {
-        return _signal(.invalid, default: lhs._quiet._canonical)
-      }
-      if rhs.isSignalingNaN {
-        return _signal(.invalid, default: rhs._quiet._canonical)
-      }
-
-      if lhs.isNaN {
-        return lhs._canonical
-      }
-      if rhs.isNaN {
-        return rhs._canonical
-      }
-
-      if lhs.isInfinite {
-        if rhs.isZero { return _signal(.invalid, default: .nan) }
-        return isSignMinus ? -.infinity : .infinity
-      }
-      if rhs.isInfinite {
-        if lhs.isZero { return _signal(.invalid, default: .nan) }
-        return isSignMinus ? -.infinity : .infinity
-      }
-
-      let e = Int(lhs.exponentBitPattern) &- 6176 &+ Int(rhs.exponentBitPattern)
-      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: max(e, 0)) &<< 113)
-      return isSignMinus ? -abs : abs
-    }
-
-    // Compute the intermediate result.
-    var e = Int(lhs.exponentBitPattern) &- 6176 &+ Int(rhs.exponentBitPattern)
-    let (hi, lo) =
-      lhs.significandBitPattern.multipliedFullWidth(
-        by: rhs.significandBitPattern)
+    var e = biasedExponent
+    let (hi, lo) = significand
 
     // Per IEEE-754, detect tininess (i.e., underflow) before rounding.
     let isTiny: Bool = if e < -34 {
@@ -1059,6 +911,261 @@ extension Decimal128: Numeric {
   }
 
   @inlinable
+  public func adding(
+    _ rhs: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) -> Self {
+    var lhs = self, rhs = rhs
+
+    guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
+      if lhs.isSignalingNaN {
+        return _signal(.invalid, default: lhs._quiet._canonical)
+      }
+      if rhs.isSignalingNaN {
+        return _signal(.invalid, default: rhs._quiet._canonical)
+      }
+
+      if lhs.isNaN {
+        return lhs._canonical
+      }
+      if rhs.isNaN {
+        return rhs._canonical
+      }
+
+      if lhs.isInfinite {
+        let isSignMinus = lhs._isSignMinus
+        if rhs.isInfinite && isSignMinus != rhs._isSignMinus {
+          return _signal(.invalid, default: .nan)
+        }
+        return isSignMinus ? -.infinity : .infinity
+      }
+      if rhs.isInfinite {
+        return rhs._isSignMinus ? -.infinity : .infinity
+      }
+
+      if lhs.isZero {
+        if rhs.isZero {
+          // Adding ±0 and ±0. See IEEE-754 §6.3.
+          let isSignMinus = rule == .down
+            ? lhs._isSignMinus || rhs._isSignMinus
+            : lhs._isSignMinus && rhs._isSignMinus
+          let e = min(lhs.exponentBitPattern, rhs.exponentBitPattern)
+          let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113)
+          return isSignMinus ? -abs : abs
+        }
+        // Swap operands so that `lhs` is nonzero and `rhs` is zero.
+        swap(&lhs, &rhs)
+        // Fall through.
+      }
+      var e1 = lhs.exponentBitPattern
+      let e2 = rhs.exponentBitPattern
+      guard e1 > e2 else { return lhs }
+      var c1 = lhs.significandBitPattern
+      // Estimate log10(c). See `UInt128._log10` for a detailed explanation.
+      // It is important that this estimate be at least the true floor log10 and
+      // at most one greater.
+      let estimate = ((19 &* (127 &- (c1|1).leadingZeroBitCount)) &>> 6) &+ 1
+      let n = min(e1 &- e2, UInt(max(0, 33 &- estimate)))
+      if n > 0 {
+        c1 &*= UInt128._exp10(Int(n))
+        e1 &-= n
+      }
+      if e1 > e2 && c1 <= 999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
+        c1 &*= 10
+        e1 &-= 1
+      }
+      return Self(
+        sign: lhs.sign, exponentBitPattern: e1, significandBitPattern: c1)
+    }
+
+    var (e1, e2) = (lhs.exponentBitPattern, rhs.exponentBitPattern)
+    if e1 < e2 {
+      swap(&e1, &e2)
+      swap(&lhs, &rhs)
+    }
+    let n = Int(e1 &- e2)
+
+    var isSignMinus = lhs._isSignMinus
+
+    var c1 = lhs.significandBitPattern
+    let logc1 = c1._commonLogarithm
+    let c2 = rhs.significandBitPattern
+    if n &+ (logc1 &- c2._commonLogarithm) > 34 {
+      // Inexact.
+      var isTiny = false
+      if logc1 < 33 {
+        let n_ = UInt(33 &- logc1)
+        if e1 < n_ {
+          // Note that the result isn't tiny if `e1 == n_`.
+          isTiny = true
+          c1 &*= UInt128._exp10(Int(e1))
+          e1 = 0
+        } else {
+          c1 &*= UInt128._exp10(Int(n_))
+          e1 &-= n_
+        }
+      }
+      if isSignMinus == rhs._isSignMinus {
+        let nextAway: Bool = switch rule {
+        case .awayFromZero:            true
+        case .down:                    isSignMinus
+        case .toNearestOrAwayFromZero: false
+        case .toNearestOrEven:         false
+        case .towardZero:              false
+        case .up:                      !isSignMinus
+        @unknown default:              fatalError("Not implemented")
+        }
+        if nextAway {
+          if c1 == 9_999_999_999_999_999_999_999_999_999_999_999 {
+            if e1 == 12287 {
+              return _signal(
+                .overflowInexact, default: isSignMinus ? -.infinity : .infinity)
+            }
+            c1 = 1_000_000_000_000_000_000_000_000_000_000_000
+            e1 &+= 1
+          } else {
+            c1 &+= 1
+          }
+        }
+      } else {
+        let nextToward: Bool = switch rule {
+        case .awayFromZero:            false
+        case .down:                    !isSignMinus
+        case .toNearestOrAwayFromZero: false
+        case .toNearestOrEven:         false
+        case .towardZero:              true
+        case .up:                      isSignMinus
+        @unknown default:              fatalError("Not implemented")
+        }
+        if nextToward {
+          if c1 == 1_000_000_000_000_000_000_000_000_000_000_000 {
+            if e1 == 0 {
+              isTiny = true
+              c1 &-= 1
+            } else {
+              c1 = 9_999_999_999_999_999_999_999_999_999_999_999
+              e1 &-= 1
+            }
+          } else {
+            c1 &-= 1
+          }
+        }
+      }
+      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e1) &<< 113 | c1)
+      return _signal(
+        isTiny ? .underflowInexact : .inexact,
+        default: isSignMinus ? -abs : abs)
+    }
+
+    // Compute the intermediate result.
+    var (hi, lo) = n == 0
+      ? (0, c1)
+      : c1.multipliedFullWidth(by: UInt128._exp10(n))
+    if isSignMinus == rhs._isSignMinus {
+      let carry: Bool
+      (lo, carry) = lo.addingReportingOverflow(c2)
+      if carry { hi &+= 1 }
+    } else {
+      let borrow: Bool
+      (lo, borrow) = lo.subtractingReportingOverflow(c2)
+      if borrow {
+        if hi == 0 {
+          lo = ~lo &+ 1
+          isSignMinus.toggle()
+        } else {
+          hi &-= 1
+        }
+      } else if (hi, lo) == (0, 0) {
+        // Exact zero. See IEEE-754 §6.3.
+        isSignMinus = rule == .down
+        let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e2) &<< 113)
+        return isSignMinus ? -abs : abs
+      }
+    }
+
+    return ._round(isSignMinus, Int(e2), (hi, lo), rule)
+  }
+
+  @inlinable
+  @inline(__always)
+  public func subtracting(
+    _ rhs: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) -> Self {
+    adding(-rhs, rounding: rule)
+  }
+
+  @inlinable
+  @inline(__always)
+  public static func + (lhs: Self, rhs: Self) -> Self {
+    lhs.adding(rhs)
+  }
+
+  @inlinable
+  @inline(__always)
+  public static func += (lhs: inout Self, rhs: Self) {
+    lhs = lhs + rhs
+  }
+
+  @inlinable
+  @inline(__always)
+  public static func - (lhs: Self, rhs: Self) -> Self {
+    lhs.subtracting(rhs)
+  }
+
+  @inlinable
+  @inline(__always)
+  public static func -= (lhs: inout Self, rhs: Self) {
+    lhs = lhs - rhs
+  }
+}
+
+@available(macOS 15.0, *)
+extension Decimal128: Numeric {
+  @inlinable
+  public func multiplied(
+    by rhs: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) -> Self {
+    let lhs = self
+    let isSignMinus = lhs._isSignMinus != rhs._isSignMinus
+
+    guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
+      if lhs.isSignalingNaN {
+        return _signal(.invalid, default: lhs._quiet._canonical)
+      }
+      if rhs.isSignalingNaN {
+        return _signal(.invalid, default: rhs._quiet._canonical)
+      }
+
+      if lhs.isNaN {
+        return lhs._canonical
+      }
+      if rhs.isNaN {
+        return rhs._canonical
+      }
+
+      if lhs.isInfinite {
+        if rhs.isZero { return _signal(.invalid, default: .nan) }
+        return isSignMinus ? -.infinity : .infinity
+      }
+      if rhs.isInfinite {
+        if lhs.isZero { return _signal(.invalid, default: .nan) }
+        return isSignMinus ? -.infinity : .infinity
+      }
+
+      let e = Int(lhs.exponentBitPattern) &- 6176 &+ Int(rhs.exponentBitPattern)
+      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: max(e, 0)) &<< 113)
+      return isSignMinus ? -abs : abs
+    }
+
+    // Compute the intermediate result.
+    let e = Int(lhs.exponentBitPattern) &- 6176 &+ Int(rhs.exponentBitPattern)
+    let (hi, lo) =
+      lhs.significandBitPattern.multipliedFullWidth(
+        by: rhs.significandBitPattern)
+
+    return ._round(isSignMinus, e, (hi, lo), rule)
+  }
+
+  @inlinable
   @inline(__always)
   public static func * (lhs: Self, rhs: Self) -> Self {
     lhs.multiplied(by: rhs)
@@ -1102,6 +1209,22 @@ extension Decimal128 {
   }
 
   public init?(exactly source: Float16) {
+    if source.isNaN {
+      if source.isSignalingNaN { _signal(.invalid) }
+      return nil
+    }
+    if source.isInfinite {
+      self = source < 0 ? -.infinity : .infinity
+      return
+    }
+    if source.isZero {
+      self = source.sign == .minus ? -Self() : Self()
+      return
+    }
+
+    if source.isSubnormal {
+      // ...
+    }
     fatalError("Not implemented")
   }
 
@@ -1420,7 +1543,7 @@ extension Decimal128: CustomStringConvertible {
       }
 
       // TODO: Decide if we want to preserve quantum.
-      return _isSignMinus ? "-0.0" : "0.0"
+      return _isSignMinus ? "-0." : "0."
     }
 
     // TODO: Re-implement.

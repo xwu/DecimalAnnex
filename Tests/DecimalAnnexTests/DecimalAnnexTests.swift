@@ -120,6 +120,18 @@ final class DecimalAnnexTests: XCTestCase {
     XCTAssertTrue(x.isZero)
   }
 
+  func testAddition() throws {
+    guard #available(macOS 15.0, *) else { return }
+
+    for i in 0..<256 {
+      for j in 0..<256 {
+        let x = Decimal128(integerLiteral: Int128(i))
+        let y = Decimal128(integerLiteral: Int128(j))
+        XCTAssertEqual(Double(i + j).description, (x + y).description + "0")
+      }
+    }
+  }
+
   func testMultiplication() throws {
     guard #available(macOS 15.0, *) else { return }
 
@@ -127,7 +139,7 @@ final class DecimalAnnexTests: XCTestCase {
       for j in 0..<256 {
         let x = Decimal128(integerLiteral: Int128(i))
         let y = Decimal128(integerLiteral: Int128(j))
-        XCTAssertEqual(Double(i * j).description, (x * y).description)
+        XCTAssertEqual(Double(i * j).description, (x * y).description + "0")
       }
     }
   }
@@ -137,8 +149,7 @@ final class DecimalAnnexTests: XCTestCase {
 
     // As a concession to the idiosyncrasies of float literals, we will write
     // "." at the end of integral values in order to hint that these are
-    // floating-point values, even when there's not actually that extra
-    // significant figure in the encoding.
+    // floating-point values.
     let y = Decimal128(
       _sign: .minus,
       combinationBitPattern: 6176 << 3,
@@ -147,8 +158,7 @@ final class DecimalAnnexTests: XCTestCase {
 
     // Otherwise, though, we don't take the special code paths to avoid
     // scientific notation if there's not enough significant figures, and we
-    // also don't add phantom significant figures when we're using scientific
-    // notation.
+    // also don't add phantom significant figures.
     var z = Decimal128(
       _sign: .minus,
       combinationBitPattern: 6177 << 3,
