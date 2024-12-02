@@ -92,16 +92,22 @@ public struct _DecimalException: OptionSet {
 @available(macOS 15.0, *)
 @frozen
 public struct Decimal128: Sendable {
+  /// The bit pattern of the value’s encoding.
   public var bitPattern: UInt128
 
-  @_transparent
-  public init() {
-    bitPattern = 6176 &<< 113
-  }
-
+  /// Creates a new value with the given bit pattern.
+  ///
+  /// - Parameters:
+  ///   - bitPattern: The integer encoding of a `Decimal128` instance.
   @_transparent
   public init(bitPattern: UInt128) {
     self.bitPattern = bitPattern
+  }
+
+  /// Creates a new value equal to zero.
+  @_transparent
+  public init() {
+    bitPattern = 6176 &<< 113
   }
 }
 
@@ -205,20 +211,32 @@ extension Decimal128 {
     }
   }
 
+  /// Creates a new instance from the specified sign and bit patterns.
+  ///
+  /// To create a non-finite value, exclude two leading bits of the combination
+  /// field and include extra trailing bits in the 14-bit encoding of the
+  /// exponent field, and set the implicit leading bit of the 114-bit encoding
+  /// of the concatenated significand field.
+  ///
+  /// - Parameters:
+  ///   - s: The sign of the new value.
+  ///   - e: The bit pattern to use for the exponent field of the new value.
+  ///   - c: The bit pattern to use for the concatenated significand field of
+  ///     the new value, including any implicit leading bit.
   @inlinable
   public init(
-    sign: FloatingPointSign,
+    sign s: FloatingPointSign,
     exponentBitPattern e: UInt,
     significandBitPattern c: UInt128
   ) {
     if (c &>> 113) & 1 == 0 {
       bitPattern =
-        (UInt128(truncatingIfNeeded: sign.rawValue) &<< 127) |
+        (UInt128(truncatingIfNeeded: s.rawValue) &<< 127) |
           (UInt128(truncatingIfNeeded: e & 0x3fff) &<< 113) |
             (c & (1 &<< 113 &- 1))
     } else {
       bitPattern =
-        (UInt128(truncatingIfNeeded: sign.rawValue) &<< 127) |
+        (UInt128(truncatingIfNeeded: s.rawValue) &<< 127) |
           (UInt128(truncatingIfNeeded: (e & 0x3fff) | 0xc000) &<< 111) |
             (c & (1 &<< 111 &- 1))
     }
@@ -228,11 +246,6 @@ extension Decimal128 {
 @available(macOS 15.0, *)
 extension Decimal128 {
   @inlinable
-  public static var infinity: Self {
-    Self(bitPattern: 0x1e000 &<< 110)
-  }
-
-  @inlinable
   public static var nan: Self {
     Self(bitPattern: 0x1f000 &<< 110)
   }
@@ -240,6 +253,23 @@ extension Decimal128 {
   @inlinable
   public static var signalingNaN: Self {
     Self(bitPattern: 0x1f800 &<< 110)
+  }
+
+  /// Creates a NaN ("not a number") value with the specified payload.
+  ///
+  /// - Parameters:
+  ///   - payload: The payload to use for the new NaN value.
+  ///   - signaling: Pass `true` to create a signaling NaN or `false` to create
+  ///     a quiet NaN.
+  @inlinable
+  public init(nan payload: UInt128, signaling: Bool) {
+    precondition(payload < (1 &<< 110), "NaN payload is not encodable.")
+    bitPattern = ((signaling ? 0x1f800 : 0x1f000) &<< 110) | payload
+  }
+
+  @inlinable
+  public static var infinity: Self {
+    Self(bitPattern: 0x1e000 &<< 110)
   }
 
   @inlinable
@@ -263,19 +293,14 @@ extension Decimal128 {
   }
 
   @inlinable
-  public init(nan payload: UInt128, signaling: Bool) {
-    bitPattern =
-      ((signaling ? 0x1f800 : 0x1f000) &<< 110) | (payload & (1 &<< 110 &- 1))
-  }
-
-  @inlinable
   public var isCanonical: Bool {
     let g = _combinationBitPattern
     guard g < 0x1f000 else {
       // NaN is canonical if:
-      // - all but the highest 6 bits of the combination field are zero; and
-      // - the payload, which is the trailing significand, is not more than
-      //   10 ** 33 - 1 (note the exponent).
+      // - all but the most significant six bits of the combination field are
+      //   zero; and
+      // - the payload, which is the trailing significand field, is not more
+      //   than 10 ** 33 - 1 (note the exponent).
       return g & 0x7ff == 0 &&
         _trailingSignificandBitPattern <=
           999_999_999_999_999_999_999_999_999_999_999 as UInt128
@@ -293,6 +318,11 @@ extension Decimal128 {
       9_999_999_999_999_999_999_999_999_999_999_999 as UInt128
   }
 
+  /// The value represented in its canonical form.
+  ///
+  /// Decimal floating-point types admit a large number of non-canonical
+  /// encodings. Finite non-canonical values are canonicalized as zeros.
+  /// Consult the IEEE-754 standard for additional details.
   @inlinable
   internal var _canonical: Self {
     let g = _combinationBitPattern
@@ -328,6 +358,8 @@ extension Decimal128 {
     @inline(__always) get { _combinationBitPattern >= 0x1f800 }
   }
 
+  // The value with its representation unchanged, except to clear the signaling
+  // bit if the value is NaN ("not a number").
   @inlinable
   internal var _quiet: Self {
     @inline(__always) get {
@@ -350,6 +382,8 @@ extension Decimal128 {
     @inline(__always) get { _combinationBitPattern < 0x1e000 }
   }
 
+  /// A Boolean value indicating whether this instance is both finite and not
+  /// equal to zero.
   @inlinable
   internal var _isFiniteNonzero: Bool {
     @inline(__always) get {
@@ -407,14 +441,54 @@ extension Decimal128 {
 
 @available(macOS 15.0, *)
 extension Decimal128 {
-  public var decade: Self {
-    guard isFinite else { return .nan }
-
-    fatalError("Not implemented")
-  }
-
   public var nextUp: Self {
-    fatalError("Not implemented")
+    guard _isFiniteNonzero else {
+      if isSignalingNaN {
+        return _signal(.invalid, default: _quiet._canonical)
+      }
+      if isNaN {
+        return _canonical
+      }
+      if isInfinite {
+        return _isSignMinus ? -.greatestFiniteMagnitude : .infinity
+      }
+      return .leastNonzeroMagnitude
+    }
+
+    var e = exponentBitPattern
+    var c = significandBitPattern
+    if e != 0 {
+      // Estimate log10(c). See `UInt128._log10` for a detailed explanation.
+      // It is important that this estimate be at least the true floor log10 and
+      // at most one greater.
+      let estimate = ((19 &* (127 &- (c|1).leadingZeroBitCount)) &>> 6) &+ 1
+      let n = min(e, UInt(max(0, 33 &- estimate)))
+      if n != 0 {
+        c &*= UInt128._exp10(Int(n))
+        e &-= n
+      }
+      if e != 0 && c <= 999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
+        c &*= 10
+        e &-= 1
+      }
+    }
+    if _isSignMinus {
+      if e != 0 && c == 1_000_000_000_000_000_000_000_000_000_000_000 {
+        c = 9_999_999_999_999_999_999_999_999_999_999_999
+        e &-= 1
+      } else {
+        c &-= 1
+      }
+    } else {
+      if c == 9_999_999_999_999_999_999_999_999_999_999_999 {
+        if e == 12287 { return .infinity }
+        c = 1_000_000_000_000_000_000_000_000_000_000_000
+        e &+= 1
+      } else {
+        c &+= 1
+      }
+    }
+    return Self(sign: sign, exponentBitPattern: e, significandBitPattern: c)
   }
 
   @inlinable
@@ -430,14 +504,23 @@ extension Decimal128 {
       exponentBitPattern: exponentBitPattern,
       significandBitPattern: 1)
   }
+  // TODO: File bug to clarify documentation for `FloatingPoint.ulp`.
 
+  /// The quantum of this value.
+  ///
+  /// If `x` is finite, then `x.quantum` is equivalent to `x.ulp`. However,
+  /// if `x` is infinite, then `x.quantum` is +∞ even though `x.ulp` is NaN.
+  ///
+  /// This property implements the `quantum` operation defined by the IEEE-754
+  /// specification.
   @inlinable
   public var quantum: Self {
     guard isFinite else {
-      // TODO: Does this operation signal invalid if the operand is sNaN?
-      return Self(bitPattern: bitPattern & Self.nan.bitPattern)
+      let result = Self(bitPattern: bitPattern & Self.nan.bitPattern)
+      return isSignalingNaN ? _signal(.invalid, default: result) : result
     }
-    // TODO: Does this operation signal underflow if the result is subnormal?
+    // Exact result.
+    // Under default exception handling, no underflow is signaled.
     return Self(
       sign: sign,
       exponentBitPattern: exponentBitPattern,
@@ -481,6 +564,20 @@ extension Decimal128 {
     fatalError("Not implemented")
   }
 
+  /// Returns a Boolean value indicating whether this value has the same quantum
+  /// as another.
+  ///
+  /// Two finite values have the same quantum if they have the same exponent
+  /// bit pattern. Any two infinite values have the same quantum, as do any two
+  /// NaN ("not a number") values. If exactly one of two values is infinite or
+  /// exactly one of two values is NaN, then those two values do not have the
+  /// same quantum.
+  ///
+  /// This method implements the `sameQuantum` operation defined by the IEEE-754
+  /// specification.
+  ///
+  /// - Parameters:
+  ///   - other: The value to use for comparing quantums with this value.
   @inlinable
   public func hasSameQuantum(as other: Self) -> Bool {
     guard isFinite && other.isFinite else {
@@ -571,11 +668,11 @@ extension Decimal128: Equatable {
 
 @available(macOS 15.0, *)
 extension Decimal128: Hashable {
-  /// Returns the result of adding +0 to the value without signaling any
-  /// floating-point exceptions and using the default rounding mode.
+  /// Returns the result of adding +0 to the value using the default rounding
+  /// mode and without signaling any floating-point exceptions.
   ///
-  /// The +0 operand is represented with the least possible exponent, so the
-  /// result is represented with the least possible exponent.
+  /// The +0 operand is represented with the least possible exponent such that
+  /// the result is represented with the least possible exponent.
   @inlinable
   internal func _addingZeroWithLeastQuantum() -> Self {
     guard _isFiniteNonzero else {
@@ -598,18 +695,18 @@ extension Decimal128: Hashable {
     }
 
     var e = exponentBitPattern
-    guard e > 0 else { return self }
+    guard e != 0 else { return self }
     var c = significandBitPattern
     // Estimate log10(c). See `UInt128._log10` for a detailed explanation.
     // It is important that this estimate be at least the true floor log10 and
     // at most one greater.
     let estimate = ((19 &* (127 &- (c|1).leadingZeroBitCount)) &>> 6) &+ 1
     let n = min(e, UInt(max(0, 33 &- estimate)))
-    if n > 0 {
+    if n != 0 {
       c &*= UInt128._exp10(Int(n))
       e &-= n
     }
-    if e > 0 && c <= 999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
+    if e != 0 && c <= 999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
       c &*= 10
       e &-= 1
     }
@@ -910,6 +1007,12 @@ extension Decimal128: AdditiveArithmetic {
     return _signal(.inexact, default: isSignMinus ? -abs : abs)
   }
 
+  /// Returns the result of adding the given value to this value,
+  /// rounding to a representable value if needed with the given rounding rule.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value to add to this value.
+  ///   - rule: The rounding rule for computing an inexact result.
   @inlinable
   public func adding(
     _ rhs: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
@@ -1085,6 +1188,12 @@ extension Decimal128: AdditiveArithmetic {
     return ._round(isSignMinus, Int(e2), (hi, lo), rule)
   }
 
+  /// Returns the result of subtracting the given value from this value,
+  /// rounding to a representable value if needed with the given rounding rule.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value to subtract from this value.
+  ///   - rule: The rounding rule to use for computing an inexact result.
   @inlinable
   @inline(__always)
   public func subtracting(
@@ -1116,10 +1225,18 @@ extension Decimal128: AdditiveArithmetic {
   public static func -= (lhs: inout Self, rhs: Self) {
     lhs = lhs - rhs
   }
+
+  // TODO: Mutating `add(_:rounding:)` and `subtract(_:rounding:)`.
 }
 
 @available(macOS 15.0, *)
 extension Decimal128: Numeric {
+  /// Returns the result of multiplying this value by the given value,
+  /// rounding to a representable value if needed with the given rounding rule.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value by which to multiply this value.
+  ///   - rule: The rounding rule to use for computing an inexact result.
   @inlinable
   public func multiplied(
     by rhs: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
@@ -1188,6 +1305,8 @@ extension Decimal128: Numeric {
     bitPattern |= Self().bitPattern
     if source < (0 as T) { self.negate() }
   }
+
+  // TODO: Mutating `multiply(by:rounding:)`.
 }
 
 @available(macOS 15.0, *)
