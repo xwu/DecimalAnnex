@@ -28,7 +28,9 @@ final class DecimalAnnexTests: XCTestCase {
   }
 
   func testUInt256() throws {
-    guard #available (macOS 15.0, *) else { return }
+    guard #available(
+      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+    ) else { return }
     do {
       XCTAssertEqual(
         _UInt256.max.description,
@@ -68,7 +70,9 @@ final class DecimalAnnexTests: XCTestCase {
   }
 
   func testLog10() throws {
-    guard #available (macOS 15.0, *) else { return }
+    guard #available(
+      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+    ) else { return }
 
     for _ in 0...65535 {
       let x = UInt128.random(in: 0...UInt128.max)
@@ -77,15 +81,21 @@ final class DecimalAnnexTests: XCTestCase {
   }
 
   func testPi() throws {
-    guard #available (macOS 15.0, *) else { return }
+    guard #available(
+      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+    ) else { return }
 
     let x = Decimal128.pi
     XCTAssertEqual(x.description, "3.141592653589793238462643383279502")
   }
 
+  // TODO: Test `nextUp`.
+
   func testEquatable() throws {
-    guard #available(macOS 15.0, *) else { return }
-    
+    guard #available(
+      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+    ) else { return }
+
     let x = Decimal128(
       _sign: .minus,
       combinationBitPattern: 6177 << 3,
@@ -100,7 +110,9 @@ final class DecimalAnnexTests: XCTestCase {
   }
 
   func testAddingZero() throws {
-    guard #available(macOS 15.0, *) else { return }
+    guard #available(
+      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+    ) else { return }
 
     let x = Decimal128(
       _sign: .minus,
@@ -110,18 +122,24 @@ final class DecimalAnnexTests: XCTestCase {
       _sign: .minus,
       combinationBitPattern: 6178 << 3,
       trailingSignificandBitPattern: 1)
-    XCTAssertEqual(x._addingZeroWithLeastQuantum().bitPattern, y._addingZeroWithLeastQuantum().bitPattern)
+    XCTAssertEqual(
+      x._addingZeroWithLeastQuantum().bitPattern,
+      y._addingZeroWithLeastQuantum().bitPattern)
   }
 
   func testIntegerLiteral() throws {
-    guard #available(macOS 15.0, *) else { return }
+    guard #available(
+      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+    ) else { return }
 
     let x = 0 as Decimal128
     XCTAssertTrue(x.isZero)
   }
 
   func testAddition() throws {
-    guard #available(macOS 15.0, *) else { return }
+    guard #available(
+      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+    ) else { return }
 
     for i in 0..<256 {
       for j in 0..<256 {
@@ -133,7 +151,9 @@ final class DecimalAnnexTests: XCTestCase {
   }
 
   func testMultiplication() throws {
-    guard #available(macOS 15.0, *) else { return }
+    guard #available(
+      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+    ) else { return }
 
     for i in 0..<256 {
       for j in 0..<256 {
@@ -145,7 +165,9 @@ final class DecimalAnnexTests: XCTestCase {
   }
 
   func testDescription() throws {
-    guard #available(macOS 15.0, *) else { return }
+    guard #available(
+      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+    ) else { return }
 
     // As a concession to the idiosyncrasies of float literals, we will write
     // "." at the end of integral values in order to hint that these are

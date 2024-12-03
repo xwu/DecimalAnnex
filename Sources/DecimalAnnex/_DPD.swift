@@ -1,20 +1,3 @@
-@available(macOS 15.0, *)
-extension UInt128 {
-  @inlinable
-  internal func _quotientAndRemainderDividingBy1e18()
-  -> (quotient: Self, remainder: Self) {
-    // See Granlund & Montgomery (1994); in particular, theorem 4.2.
-    //
-    // Here, we right shift the dividend by 18, then compute unsigned division
-    // by 5**18 using multiplication and shift. Note, therefore, that the max
-    // dividend is only 110 bits wide.
-    let m: Self = 748288838313422294120286634350737
-    let q = (self &>> 18).multipliedFullWidth(by: m).high &>> 23
-    let r = self &- q &* 1_000_000_000_000_000_000
-    return (q, r)
-  }
-}
-
 @frozen
 public enum _DPD { }
 
@@ -65,7 +48,7 @@ extension _DPD {
     return table[index] &+ (pqr & 1) &* 100 &+ (stu & 1) &* 10 &+ (vwxy & 1)
   }
 
-  @available(macOS 15.0, *)
+  @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
   @inlinable
   public static func decode(_ significand: UInt128) -> UInt128 {
     // FIXME: Tighten this precondition so that 'a' cannot exceed 9.
@@ -183,7 +166,7 @@ extension _DPD {
     return table[index] | ((hnds & 1) &<< 7) | ((tens & 1) &<< 4) | (ones & 1)
   }
 
-  @available(macOS 15.0, *)
+  @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
   @inlinable
   public static func encode(_ significand: UInt128) -> UInt128 {
     precondition(significand <= 9_999_999_999_999_999_999_999_999_999_999_999 as UInt128)
