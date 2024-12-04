@@ -1,7 +1,7 @@
 /// A 128-bit decimal floating-point value type.
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 @frozen
-public struct Decimal128: Sendable {
+public struct Decimal128: BitwiseCopyable, Sendable {
   /// The bit pattern of the value’s binary encoding.
   public var bitPattern: UInt128
 
@@ -35,12 +35,12 @@ extension Decimal128 {
   }
 
   @inlinable
-  public var magnitude: Self {
+  public var magnitude: Decimal128 {
     @inline(__always) get { Self(bitPattern: bitPattern & (~0 &>> 1)) }
   }
 
   @inlinable
-  public static prefix func - (operand: Self) -> Self {
+  public static prefix func - (operand: Decimal128) -> Decimal128 {
     var result = operand
     result.negate()
     return result
@@ -52,7 +52,7 @@ extension Decimal128 {
   }
 
   @inlinable
-  public init(signOf sign: Self, magnitudeOf magnitude: Self) {
+  public init(signOf sign: Decimal128, magnitudeOf magnitude: Decimal128) {
     bitPattern =
       (sign.bitPattern & (1 &<< 127)) | (magnitude.bitPattern & (~0 &>> 1))
   }
@@ -61,11 +61,13 @@ extension Decimal128 {
 
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Decimal128 {
+#if false
   /// A type that represents the encoded exponent of a value.
   public typealias RawExponent = UInt
 
   /// A type that represents the encoded significand of a value.
   public typealias RawSignificand = UInt128
+#endif
 
   /// The raw encoding of the value's combination field.
   @inlinable
@@ -171,12 +173,12 @@ extension Decimal128 {
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Decimal128 {
   @inlinable
-  public static var nan: Self {
+  public static var nan: Decimal128 {
     Self(bitPattern: 0x1f000 &<< 110)
   }
 
   @inlinable
-  public static var signalingNaN: Self {
+  public static var signalingNaN: Decimal128 {
     Self(bitPattern: 0x1f800 &<< 110)
   }
 
@@ -193,27 +195,27 @@ extension Decimal128 {
   }
 
   @inlinable
-  public static var infinity: Self {
+  public static var infinity: Decimal128 {
     Self(bitPattern: 0x1e000 &<< 110)
   }
 
   @inlinable
-  public static var greatestFiniteMagnitude: Self {
+  public static var greatestFiniteMagnitude: Decimal128 {
     Self(bitPattern: (12287 &<< 113) | 9_999_999_999_999_999_999_999_999_999_999_999)
   }
 
   @inlinable
-  public static var leastNormalMagnitude: Self {
+  public static var leastNormalMagnitude: Decimal128 {
     Self(bitPattern: (33 &<< 113) | 1)
   }
 
   @inlinable
-  public static var leastNonzeroMagnitude: Self {
+  public static var leastNonzeroMagnitude: Decimal128 {
     Self(bitPattern: 1)
   }
 
   @inlinable
-  public static var pi: Self {
+  public static var pi: Decimal128 {
     Self(bitPattern: (6143 &<< 113) | 3_141_592_653_589_793_238_462_643_383_279_502)
   }
 
@@ -249,7 +251,7 @@ extension Decimal128 {
   /// encodings. Finite non-canonical values are canonicalized as zeros.
   /// Consult the IEEE 754 standard for additional details.
   @inlinable
-  internal var _canonical: Self {
+  internal var _canonical: Decimal128 {
     let g = _combinationBitPattern
     guard g < 0x1f000 else {
       var mask: UInt128 = 0x3f800 &<< 110
@@ -286,7 +288,7 @@ extension Decimal128 {
   // The value with its representation unchanged except to clear the signaling
   // bit if the value is NaN ("not a number").
   @inlinable
-  internal var _quiet: Self {
+  internal var _quiet: Decimal128 {
     @inline(__always) get {
       _combinationBitPattern < 0x1f800
         ? self
@@ -366,7 +368,7 @@ extension Decimal128 {
 
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Decimal128 {
-  public var nextUp: Self {
+  public var nextUp: Decimal128 {
     guard _isFiniteNonzero else {
       if isSignalingNaN {
         return _signal(.invalid, default: _quiet._canonical)
@@ -417,12 +419,12 @@ extension Decimal128 {
   }
 
   @inlinable
-  public var nextDown: Self {
+  public var nextDown: Decimal128 {
     @inline(__always) get { -(-self).nextUp }
   }
 
   @inlinable
-  public var ulp: Self {
+  public var ulp: Decimal128 {
     guard isFinite else { return .nan }
     return Self(
       sign: sign,
@@ -439,7 +441,7 @@ extension Decimal128 {
   /// This property implements the `quantum` operation defined by the IEEE 754
   /// specification.
   @inlinable
-  public var quantum: Self {
+  public var quantum: Decimal128 {
     guard isFinite else {
       let result = Self(bitPattern: bitPattern & Self.nan.bitPattern)
       return isSignalingNaN ? _signal(.invalid, default: result) : result
@@ -453,8 +455,9 @@ extension Decimal128 {
   }
 
   public func quantized(
-    by other: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
-  ) -> Self {
+    by other: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) -> Decimal128 {
     guard _isFiniteNonzero else {
       if isSignalingNaN {
         return _signal(.invalid, default: _quiet._canonical)
@@ -504,7 +507,7 @@ extension Decimal128 {
   /// - Parameters:
   ///   - other: The value to use for comparing quantums with this value.
   @inlinable
-  public func hasSameQuantum(as other: Self) -> Bool {
+  public func hasSameQuantum(as other: Decimal128) -> Bool {
     guard isFinite && other.isFinite else {
       return bitPattern & Self.nan.bitPattern ==
         other.bitPattern & Self.nan.bitPattern
@@ -525,7 +528,7 @@ extension Decimal128 {
   }
 
   @inlinable
-  public var significand: Self {
+  public var significand: Decimal128 {
     guard isFinite else { return _canonical }
     guard !isZero else { return Self() }
     let c = significandBitPattern
@@ -533,7 +536,7 @@ extension Decimal128 {
     return Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | c)
   }
 
-  public init(sign: FloatingPointSign, exponent: Int, significand: Self) {
+  public init(sign: FloatingPointSign, exponent: Int, significand: Decimal128) {
     // scaleB
     fatalError("Not implemented")
   }
@@ -542,7 +545,7 @@ extension Decimal128 {
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Decimal128: Equatable {
   @inlinable
-  public static func == (lhs: Self, rhs: Self) -> Bool {
+  public static func == (lhs: Decimal128, rhs: Decimal128) -> Bool {
     if lhs.bitPattern == rhs.bitPattern {
       if lhs.isNaN {
         if lhs.isSignalingNaN {
@@ -599,7 +602,7 @@ extension Decimal128: Hashable {
   /// The +0 operand is represented with the least possible exponent such that
   /// the result is represented with the least possible exponent.
   @inlinable
-  internal func _addingZeroWithLeastQuantum() -> Self {
+  internal func _addingZeroWithLeastQuantum() -> Decimal128 {
     guard _isFiniteNonzero else {
       if isNaN {
         // Note that `mask` will clear the signaling bit, silencing sNaN.
@@ -650,7 +653,7 @@ extension Decimal128: Hashable {
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Decimal128: Comparable {
   @inlinable
-  public static func < (lhs: Self, rhs: Self) -> Bool {
+  public static func < (lhs: Decimal128, rhs: Decimal128) -> Bool {
     if lhs.bitPattern == rhs.bitPattern {
       if lhs.isNaN {
         return _signal(.invalid, default: false)
@@ -707,12 +710,12 @@ extension Decimal128: Comparable {
   }
 
   @inlinable
-  public static func > (lhs: Self, rhs: Self) -> Bool {
+  public static func > (lhs: Decimal128, rhs: Decimal128) -> Bool {
     return rhs < lhs
   }
 
   @inlinable
-  public static func <= (lhs: Self, rhs: Self) -> Bool {
+  public static func <= (lhs: Decimal128, rhs: Decimal128) -> Bool {
     if lhs.isNaN || rhs.isNaN {
       return _signal(.invalid, default: false)
     }
@@ -720,7 +723,7 @@ extension Decimal128: Comparable {
   }
 
   @inlinable
-  public static func >= (lhs: Self, rhs: Self) -> Bool {
+  public static func >= (lhs: Decimal128, rhs: Decimal128) -> Bool {
     if lhs.isNaN || rhs.isNaN {
       return _signal(.invalid, default: false)
     }
@@ -750,7 +753,7 @@ extension Decimal128: AdditiveArithmetic {
     _ biasedExponent: Int,
     _ significand: (high: UInt128, low: UInt128),
     _ rule: FloatingPointRoundingRule
-  ) -> Self {
+  ) -> Decimal128 {
     var e = biasedExponent
     let (hi, lo) = significand
 
@@ -935,13 +938,17 @@ extension Decimal128: AdditiveArithmetic {
   /// Returns the result of adding the given value to this value,
   /// rounding to a representable value if needed with the given rounding rule.
   ///
+  /// This method implements the `addition` operation defined by the
+  /// IEEE 754 specification.
+  ///
   /// - Parameters:
   ///   - rhs: The value to add to this value.
   ///   - rule: The rounding rule for computing an inexact result.
   @inlinable
   public func adding(
-    _ rhs: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
-  ) -> Self {
+    _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) -> Decimal128 {
     var lhs = self, rhs = rhs
 
     guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
@@ -1113,8 +1120,53 @@ extension Decimal128: AdditiveArithmetic {
     return ._round(isSignMinus, Int(e2), (hi, lo), rule)
   }
 
+  /// Adds the given value to this value in place,
+  /// rounding to a representable value if needed with the given rounding rule.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value to add to this value.
+  ///   - rule: The rounding rule for computing an inexact result.
+  @inlinable
+  @inline(__always)
+  public mutating func add(
+    _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) {
+    self = adding(rhs, rounding: rule)
+  }
+
+  /// Adds two values and produces their sum,
+  /// rounding to a representable value if needed.
+  ///
+  /// This method implements the `addition` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - lhs: The first value to add.
+  ///   - rhs: The second value to add.
+  @inlinable
+  @inline(__always)
+  public static func + (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
+    lhs.adding(rhs)
+  }
+
+  /// Adds two values and stores the result in the left-hand-side variable,
+  /// rounding to a representable value if needed.
+  ///
+  /// - Parameters:
+  ///   - lhs: The first value to add.
+  ///   - rhs: The second value to add.
+  @inlinable
+  @inline(__always)
+  public static func += (lhs: inout Decimal128, rhs: Decimal128) {
+    lhs = lhs + rhs
+  }
+
   /// Returns the result of subtracting the given value from this value,
   /// rounding to a representable value if needed with the given rounding rule.
+  ///
+  /// This method implements the `subtraction` operation defined by the
+  /// IEEE 754 specification.
   ///
   /// - Parameters:
   ///   - rhs: The value to subtract from this value.
@@ -1122,36 +1174,53 @@ extension Decimal128: AdditiveArithmetic {
   @inlinable
   @inline(__always)
   public func subtracting(
-    _ rhs: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
-  ) -> Self {
+    _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) -> Decimal128 {
     adding(-rhs, rounding: rule)
   }
 
+  /// Subtracts the given value from this value in place,
+  /// rounding to a representable value if needed with the given rounding rule.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value to subtract from this value.
+  ///   - rule: The rounding rule to use for computing an inexact result.
   @inlinable
   @inline(__always)
-  public static func + (lhs: Self, rhs: Self) -> Self {
-    lhs.adding(rhs)
+  public mutating func subtract(
+    _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) {
+    self = subtracting(rhs, rounding: rule)
   }
 
+  /// Subtracts one value from another and produces their difference,
+  /// rounding to a representable value if needed.
+  ///
+  /// This method implements the `subtraction` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - lhs: A numeric value.
+  ///   - rhs: The value to subtract from `lhs`.
   @inlinable
   @inline(__always)
-  public static func += (lhs: inout Self, rhs: Self) {
-    lhs = lhs + rhs
-  }
-
-  @inlinable
-  @inline(__always)
-  public static func - (lhs: Self, rhs: Self) -> Self {
+  public static func - (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
     lhs.subtracting(rhs)
   }
 
+  /// Subtracts the second value from the first and stores the difference in the
+  /// left-hand-side variable, rounding to a representable value if needed.
+  ///
+  /// - Parameters:
+  ///   - lhs: A numeric value.
+  ///   - rhs: The value to subtract from `lhs`.
   @inlinable
   @inline(__always)
-  public static func -= (lhs: inout Self, rhs: Self) {
+  public static func -= (lhs: inout Decimal128, rhs: Decimal128) {
     lhs = lhs - rhs
   }
-
-  // TODO: Mutating `add(_:rounding:)` and `subtract(_:rounding:)`; override default documentation.
 }
 
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
@@ -1167,8 +1236,9 @@ extension Decimal128: Numeric {
   ///   - rule: The rounding rule to use for computing an inexact result.
   @inlinable
   public func multiplied(
-    by rhs: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
-  ) -> Self {
+    by rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) -> Decimal128 {
     let lhs = self
     let isSignMinus = lhs._isSignMinus != rhs._isSignMinus
 
@@ -1219,7 +1289,8 @@ extension Decimal128: Numeric {
   @inlinable
   @inline(__always)
   public mutating func multiply(
-    by rhs: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+    by rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
   ) {
     self = multiplied(by: rhs, rounding: rule)
   }
@@ -1235,7 +1306,7 @@ extension Decimal128: Numeric {
   ///   - rhs: The second value to multiply.
   @inlinable
   @inline(__always)
-  public static func * (lhs: Self, rhs: Self) -> Self {
+  public static func * (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
     lhs.multiplied(by: rhs)
   }
 
@@ -1247,7 +1318,7 @@ extension Decimal128: Numeric {
   ///   - rhs: The second value to multiply.
   @inlinable
   @inline(__always)
-  public static func *= (lhs: inout Self, rhs: Self) {
+  public static func *= (lhs: inout Decimal128, rhs: Decimal128) {
     lhs = lhs * rhs
   }
 
@@ -1270,10 +1341,10 @@ extension Decimal128: SignedNumeric { }
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Decimal128: Strideable {
   @inlinable
-  public func distance(to other: Self) -> Self { other - self }
+  public func distance(to other: Decimal128) -> Decimal128 { other - self }
 
   @inlinable
-  public func advanced(by n: Self) -> Self { self + n }
+  public func advanced(by n: Decimal128) -> Decimal128 { self + n }
 }
 
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
@@ -1343,83 +1414,90 @@ extension Decimal128: FloatingPoint {
   public static var radix: Int { 10 }
 
   @_transparent
-  public func isEqual(to other: Self) -> Bool { self == other }
+  public func isEqual(to other: Decimal128) -> Bool { self == other }
 
   @_transparent
-  public func isLess(than other: Self) -> Bool { self < other }
+  public func isLess(than other: Decimal128) -> Bool { self < other }
 
   @_transparent
-  public func isLessThanOrEqualTo(_ other: Self) -> Bool { self <= other }
+  public func isLessThanOrEqualTo(_ other: Decimal128) -> Bool { self <= other }
 
-  public func isTotallyOrdered(belowOrEqualTo other: Self) -> Bool {
+  public func isTotallyOrdered(belowOrEqualTo other: Decimal128) -> Bool {
     fatalError("Not implemented")
   }
 
   public func addingProduct(
-    _ lhs: Self, _ rhs: Self, rounding rule: FloatingPointRoundingRule
-  ) -> Self {
+    _ lhs: Decimal128, _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule
+  ) -> Decimal128 {
     fatalError("Not implemented")
   }
 
   @inlinable
   @inline(__always)
   public mutating func addProduct(
-    _ lhs: Self, _ rhs: Self, rounding rule: FloatingPointRoundingRule
+    _ lhs: Decimal128, _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule
   ) {
     self = addingProduct(lhs, rhs, rounding: rule)
   }
 
   @inlinable
   @inline(__always)
-  public func addingProduct(_ lhs: Self, _ rhs: Self) -> Self {
+  public func addingProduct(
+    _ lhs: Decimal128, _ rhs: Decimal128
+  ) -> Decimal128 {
     addingProduct(lhs, rhs, rounding: .toNearestOrEven)
   }
 
   @inlinable
   @inline(__always)
-  public mutating func addProduct(_ lhs: Self, _ rhs: Self) {
+  public mutating func addProduct(_ lhs: Decimal128, _ rhs: Decimal128) {
     self = addingProduct(lhs, rhs)
   }
 
   public func divided(
-    by rhs: Self, rounding rule: FloatingPointRoundingRule = .toNearestOrEven
-  ) -> Self {
+    by rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) -> Decimal128 {
     fatalError("Not implemented")
   }
 
   @inlinable
   @inline(__always)
-  public static func / (lhs: Self, rhs: Self) -> Self {
+  public static func / (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
     lhs.divided(by: rhs)
   }
 
   @inlinable
   @inline(__always)
-  public static func /= (lhs: inout Self, rhs: Self) {
+  public static func /= (lhs: inout Decimal128, rhs: Decimal128) {
     lhs = lhs / rhs
   }
 
-  public func remainder(dividingBy other: Self) -> Self {
+  public func remainder(dividingBy other: Decimal128) -> Decimal128 {
     fatalError("Not implemented")
   }
 
   @inlinable
   @inline(__always)
-  public mutating func formRemainder(dividingBy other: Self) {
+  public mutating func formRemainder(dividingBy other: Decimal128) {
     self = remainder(dividingBy: other)
   }
 
-  public func truncatingRemainder(dividingBy other: Self) -> Self {
+  public func truncatingRemainder(dividingBy other: Decimal128) -> Decimal128 {
     fatalError("Not implemented")
   }
 
   @inlinable
   @inline(__always)
-  public mutating func formTruncatingRemainder(dividingBy other: Self) {
+  public mutating func formTruncatingRemainder(dividingBy other: Decimal128) {
     self = truncatingRemainder(dividingBy: other)
   }
 
-  public func squareRoot(rounding rule: FloatingPointRoundingRule) -> Self {
+  public func squareRoot(
+    rounding rule: FloatingPointRoundingRule
+  ) -> Decimal128 {
     fatalError("Not implemented")
   }
 
@@ -1433,7 +1511,7 @@ extension Decimal128: FloatingPoint {
 
   @inlinable
   @inline(__always)
-  public func squareRoot() -> Self {
+  public func squareRoot() -> Decimal128 {
     squareRoot(rounding: .toNearestOrEven)
   }
 
@@ -1443,7 +1521,7 @@ extension Decimal128: FloatingPoint {
     self = squareRoot()
   }
 
-  public func rounded(_ rule: FloatingPointRoundingRule) -> Self {
+  public func rounded(_ rule: FloatingPointRoundingRule) -> Decimal128 {
     if isSignalingNaN {
       return _signal(.invalid, default: _quiet._canonical)
     }
@@ -1630,6 +1708,19 @@ extension Decimal128 {
     // Copy the decoding of the concatenated significand,
     // which we know cannot exceed 113 bits.
     bitPattern |= c10 != (0 as UInt128) ? _DPD.decode(c10) : 0
+  }
+}
+
+@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+extension Decimal128: Codable {
+  public func encode(to encoder: any Encoder) throws {
+    var container = encoder.singleValueContainer()
+    try container.encode(binaryEncoding)
+  }
+
+  public init(from decoder: any Decoder) throws {
+    let container = try decoder.singleValueContainer()
+    self = try Self(binaryEncoding: container.decode(UInt128.self))
   }
 }
 
