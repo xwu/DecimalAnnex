@@ -36,6 +36,7 @@ Two threads of work are covered:
 | [08-fma](08-fma.md) | `addingProduct(_:_:rounding:)` | 01 |
 | [09-squareroot](09-squareroot.md) | `squareRoot(rounding:)` | 01 |
 | [10-testing](10-testing.md) | Test strategy, oracle fixtures (Python `decimal`), benchmarks | all |
+| [verification/](verification/verify_plans.py) | Executable transcription of docs 01/02/07/08 vs. mpdecimal + exact-integer oracles (40,525 checks); doc 09 carries its own executed certificates | — |
 
 ## Ground rules
 

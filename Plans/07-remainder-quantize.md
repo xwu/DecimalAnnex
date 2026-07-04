@@ -103,6 +103,23 @@ principles and from the author's knowledge of the public implementations. Where
 a specific claim could not be re-verified against a live source it is marked and
 re-derived from scratch in §3. **No fabricated line-level citations.**)
 
+> **Survey since confirmed against Intel's actual source.** `bid128_rem.c`
+> (IntelRDFPMathLib v2.2, e.g. the featuremine GitHub mirror,
+> `LIBRARY/src/bid128_rem.c`) implements exactly the structure designed here:
+> a loop over the exponent difference reducing in *dynamic* chunks sized
+> `38 − (estimated digits of the current coefficient)` — the same
+> ≤ 38-digit/128-bit capacity bound as §3.2, arrived at from the other
+> direction (Intel refills to 38 total digits per step; §3.2 folds 38 zeros
+> onto an `acc < c₂` invariant — same bound, same reason: 10³⁸ < 2¹²⁸) — with
+> one full-width multiply (`__mul_128x128_low`) and one 128÷128 divide
+> (`bid___div_128_by_128`) per iteration, quotient parity tracked as
+> `CQ.w[0] & 1` in the round-to-nearest flip condition (compare-2R-vs-divisor,
+> subtract-and-flip-sign — §3.3's fix-up), and a fast path when
+> `diff_expon <= 0` (§3.4's Cases A/C). The GDA-divergence claim (§1.1) is
+> verified empirically in `Plans/verification/verify_plans.py`, which also
+> re-verified the §4.1/§4.3 listings on ~19,000 additional checks, including
+> engineered parity ties.
+
 The naïve method — compute `q = x/y`, then `r = x − y·round(q)` — **fails**:
 `n = round(x/y)` can have up to ~12,300 decimal digits (e.g. `x = 9…9·10^6111`,
 `y = 1·10^-6176`), which is not representable and cannot be materialised.

@@ -182,7 +182,18 @@ The stubs at Decimal128.swift:1429-1457 already define
 `addingProduct(_:_:rounding:)` (this design), the mutating `addProduct`
 forms, and the rule-defaulted overloads — only the first needs a body.
 
-## 8.7 Open questions / risks
+## 8.7 Verification executed
+
+A Python transcription of §8.2–§8.4 (regime split with the `77 − Dₚ`
+boundary, borrow-sticky subtraction, exact-zero signs, preferred-exponent
+padding) matches mpdecimal's correctly-rounded `fma` on **7,500 checks** —
+value, cohort exponent, and {inexact, overflow, underflow} flags — across all
+six rounding modes, with half the vectors deliberately targeting the regime
+boundaries (δ ∈ {0, 1, 42, 43, 44, 60, ±5000, −(77−Dₚ)±1, …}) and including
+exact-cancellation sign cases. The no-truncation-with-cancellation lemma held
+as an assertion throughout. See `Plans/verification/verify_plans.py` (part 4).
+
+## 8.8 Open questions / risks
 
 1. The `0×∞ + qNaN` invalid-signaling choice (§8.1.2) — revisit when flags
    become observable; the test pins whichever choice ships.

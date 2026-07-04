@@ -108,7 +108,14 @@ if r2 == 0 {
   // then, recompute: exact ⟺ result * rhs == lhs is NOT valid (rounding);
   // the robust interim gate is to return (result, inexact) from an
   // internal _divideCore and only strip when !inexact.)
-  while e < preferred, c != 0, c % 10 == 0 /* use _quotientIfExactDividingBy10 */ {
+  // CORRECTED by machine verification (Plans/verification/verify_plans.py):
+  // the strip bound is min(preferred, 12287), NOT preferred alone. When the
+  // preferred exponent exceeds the format maximum (e.g. exact
+  // 5×10^6124 / 10^-6175-style cases; concretely (c=5, E=12300)/(c=1, E=6177))
+  // an unbounded strip walks the exponent past 12287, undoing _round's
+  // regrow clamp and producing an unencodable result. IEEE selects the
+  // cohort member closest to preferred AMONG THOSE THAT EXIST.
+  while e < min(preferred, 12287), c != 0, c % 10 == 0 {
     c /= 10
     e += 1
   }
@@ -158,3 +165,15 @@ reaches deeper exponents than `*` (biased `e` down to
   `greatestFiniteMagnitude / 0.5` (overflow per rule).
 - Signed-zero sign through every special-case cell of the §2.1 table.
 - Oracle sweep: random (c, E) pairs × rules against Python `decimal` (doc 10).
+
+## 2.6 Verification executed
+
+A Python transcription of §2.2 + §2.3 (with doc 01's generalized tininess
+ladder and the §2.3 strip bound) matches mpdecimal (prec 34, Emin −6143,
+Emax 6144, clamp 1) on **9,002 division checks** — value, cohort exponent,
+and {inexact, overflow, underflow} flags — across all six rounding modes with
+structured-random operands, plus the §2.3 cohort pins. Run
+`python3 Plans/verification/verify_plans.py`. The harness caught two real
+design errors now folded back into these documents (doc 01 §1.1 note, §2.3
+strip bound) — treat it as a living artifact: re-run after any algorithm
+change, and port its vectors to the Swift test suite (doc 10).

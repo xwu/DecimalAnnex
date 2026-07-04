@@ -93,6 +93,28 @@ case .toNearestOrEven:
 - [ ] Signal `.inexact`/`.underflowInexact` whenever `sticky` is set, even if
       `rem == 0`.
 
+**Two additional corrections surfaced by machine verification**
+(`Plans/verification/verify_plans.py`, 40,525 checks against mpdecimal):
+
+1. **Generalize the tininess ladder for 256-bit intermediates.** The current
+   constants silently assume the intermediate is < 10⁶⁸ (true for `+`/`×`,
+   whose intermediates are sums/products of 34-digit significands). Division
+   (doc 02) and FMA (doc 08) intermediates reach ~1.16·10⁷⁷ (2²⁵⁶), where the
+   shortcuts misclassify: `e < −34 → tiny` is wrong for e ∈ [−44, −35] with
+   I ≥ 10^(33−e), and the `e < −68` below-half-lnz early exit needs `e ≤ −78`.
+   The exact criterion is `I < 10^(33−e)` (strict compare; safe with sticky):
+   unconditionally tiny only for `e ≤ −45`, unconditionally non-tiny for
+   `e ≥ 33`, 256-bit compare against `10^(33−e)` between.
+2. **Sticky decidability precondition.** With `pow == 1` (no digits stripped)
+   and `sticky` set, the excess fraction's relation to half-ulp is unknown, so
+   the two to-nearest rules cannot decide. This situation is unreachable from
+   the planned callers — division always strips ≥ 8 digits; FMA's truncating
+   regimes hold ≥ 76-digit intermediates (doc 08's no-cancellation lemma);
+   parsing/conversion keep 35 digits deliberately (docs 04/05) — but `_round`
+   must document (and `assert`) the precondition: *sticky with a to-nearest
+   rule requires digits to be stripped below the rounding position, or the
+   tiny path with `e < 0`*.
+
 ## 1.2 Bug fix: exact-path overflow with non-full significands
 
 `_round` currently declares overflow whenever the stripped exponent exceeds
