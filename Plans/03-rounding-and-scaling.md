@@ -73,6 +73,11 @@ delegates.
 
 ## 3.2 `quantized(by:rounding:)` — complete the stub (Decimal128.swift:457-493)
 
+> **Superseded by doc 07 §§1.3, 3.5, 4.3**, which carries the full design with
+> a complete listing, proof that coarser-quantum rounding can never signal
+> invalid, edge-case table (Q1–Q16), and oracle-verified vectors. The sketch
+> below is retained as a summary; where they differ, doc 07 governs.
+
 IEEE 754-2019 §5.3.2 `quantize(x, y)`: value of `x`, quantum of `y`. Never
 overflows/underflows; signals **invalid** (returning NaN) when the result
 can't hold 34 digits; signals inexact when the value changes.

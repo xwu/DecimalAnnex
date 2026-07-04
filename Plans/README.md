@@ -32,7 +32,7 @@ Two threads of work are covered:
 | [04-text](04-text.md) | `description` re-implementation, `LosslessStringConvertible` parser (ASCII-only by design) | 01 |
 | [05-binary-fp-conversion](05-binary-fp-conversion.md) | `init(Double)` / `init?(exactly:)` exact multiword path; `Double(Decimal128)` bracketing | 01 |
 | [06-cox-table-decimal128](06-cox-table-decimal128.md) | Analysis: extending the Cox power-of-ten table to `Decimal128`↔`Double` (range, entry width, saturation constants) | 05 |
-| [07-remainder](07-remainder.md) | `remainder(dividingBy:)`, `truncatingRemainder(dividingBy:)` | 01, 02 |
+| [07-remainder-quantize](07-remainder-quantize.md) | `remainder(dividingBy:)`, `truncatingRemainder(dividingBy:)`, `quantized(by:rounding:)` full design (supersedes the 03 §3.2 sketch) | — |
 | [08-fma](08-fma.md) | `addingProduct(_:_:rounding:)` | 01 |
 | [09-squareroot](09-squareroot.md) | `squareRoot(rounding:)` | 01 |
 | [10-testing](10-testing.md) | Test strategy, oracle fixtures (Python `decimal`), benchmarks | all |
