@@ -1,4 +1,4 @@
-/// A 128-bit decimal floating-point value type.
+/// A 128-bit decimal floating-point value.
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 @frozen
 public struct Decimal128: BitwiseCopyable, Sendable {
@@ -9,13 +9,13 @@ public struct Decimal128: BitwiseCopyable, Sendable {
   ///
   /// - Parameters:
   ///   - bitPattern: The binary encoding of a `Decimal128` instance.
-  @_transparent
+  @inline(always)
   public init(bitPattern: UInt128) {
     self.bitPattern = bitPattern
   }
 
   /// Creates a new value equal to zero.
-  @_transparent
+  @inline(always)
   public init() {
     bitPattern = 6176 &<< 113
   }
@@ -26,17 +26,17 @@ extension Decimal128 {
   @inlinable
   public var sign: FloatingPointSign {
     let rawValue = Int(truncatingIfNeeded: bitPattern &>> 127)
-    return FloatingPointSign(rawValue: rawValue).unsafelyUnwrapped
+    return unsafe FloatingPointSign(rawValue: rawValue).unsafelyUnwrapped
   }
 
   @inlinable
   internal var _isSignMinus: Bool {
-    @inline(__always) get { bitPattern &>> 127 == 1 }
+    @inline(always) get { bitPattern &>> 127 == 1 }
   }
 
   @inlinable
   public var magnitude: Decimal128 {
-    @inline(__always) get { Self(bitPattern: bitPattern & (~0 &>> 1)) }
+    @inline(always) get { Self(bitPattern: bitPattern & (~0 &>> 1)) }
   }
 
   @inlinable
@@ -72,7 +72,7 @@ extension Decimal128 {
   /// The raw encoding of the value's combination field.
   @inlinable
   internal var _combinationBitPattern: UInt {
-    @inline(__always) get {
+    @inline(always) get {
       UInt(truncatingIfNeeded: bitPattern &>> 110) & 0x1ffff
     }
   }
@@ -80,7 +80,7 @@ extension Decimal128 {
   /// The raw encoding of the value's trailing significand field.
   @inlinable
   internal var _trailingSignificandBitPattern: UInt128 {
-    @inline(__always) get {
+    @inline(always) get {
       bitPattern & (1 &<< 110 &- 1)
     }
   }
@@ -112,7 +112,7 @@ extension Decimal128 {
   /// and includes extra trailing bits.
   @inlinable
   public var exponentBitPattern: UInt {
-    if magnitude.bitPattern < ((0x3 as UInt128) &<< 125) {
+    if magnitude.bitPattern < (0x3 &<< 125) {
       UInt(truncatingIfNeeded: bitPattern &>> 113) & 0x3fff
     } else {
       UInt(truncatingIfNeeded: bitPattern &>> 111) & 0x3fff
@@ -127,7 +127,7 @@ extension Decimal128 {
   /// bits; for infinite values, it includes ignored bits.
   @inlinable
   public var significandBitPattern: UInt128 {
-    if magnitude.bitPattern < ((0x3 as UInt128) &<< 125) {
+    if magnitude.bitPattern < (0x3 &<< 125) {
       bitPattern & (1 &<< 113 &- 1)
     } else {
       bitPattern & (1 &<< 111 &- 1) | (1 &<< 113)
@@ -216,7 +216,7 @@ extension Decimal128 {
 
   @inlinable
   public static var pi: Decimal128 {
-    Self(bitPattern: (6143 &<< 113) | 3_141_592_653_589_793_238_462_643_383_279_502)
+    Self(bitPattern: (6143 &<< 113) | 3_141_592_653_589_793_238_462_643_383_279_503)
   }
 
   @inlinable
@@ -230,7 +230,7 @@ extension Decimal128 {
       //   than 10 ** 33 - 1 (note the exponent).
       return g & 0x7ff == 0 &&
         _trailingSignificandBitPattern <=
-          999_999_999_999_999_999_999_999_999_999_999 as UInt128
+          999_999_999_999_999_999_999_999_999_999_999
     }
     guard g < 0x1e000 else {
       // Infinity.
@@ -242,7 +242,7 @@ extension Decimal128 {
     // Having excluded all values where the combination field begins `11...`,
     // we know the represented significand is in the lower 113 bits.
     return bitPattern & (1 &<< 113 &- 1) <=
-      9_999_999_999_999_999_999_999_999_999_999_999 as UInt128
+      9_999_999_999_999_999_999_999_999_999_999_999
   }
 
   /// The value represented in its canonical form.
@@ -256,7 +256,7 @@ extension Decimal128 {
     guard g < 0x1f000 else {
       var mask: UInt128 = 0x3f800 &<< 110
       if _trailingSignificandBitPattern <=
-          999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
+          999_999_999_999_999_999_999_999_999_999_999 {
         mask |= 1 &<< 110 &- 1
       }
       return Self(bitPattern: bitPattern & mask)
@@ -266,7 +266,7 @@ extension Decimal128 {
     }
     guard g < 0x18000 &&
       (bitPattern & (1 &<< 113 &- 1) <=
-        9_999_999_999_999_999_999_999_999_999_999_999 as UInt128) else {
+        9_999_999_999_999_999_999_999_999_999_999_999) else {
       return Self(
         sign: sign,
         exponentBitPattern: exponentBitPattern,
@@ -277,19 +277,19 @@ extension Decimal128 {
 
   @inlinable
   public var isNaN: Bool {
-    @inline(__always) get { _combinationBitPattern >= 0x1f000 }
+    @inline(always) get { _combinationBitPattern >= 0x1f000 }
   }
 
   @inlinable
   public var isSignalingNaN: Bool {
-    @inline(__always) get { _combinationBitPattern >= 0x1f800 }
+    @inline(always) get { _combinationBitPattern >= 0x1f800 }
   }
 
   // The value with its representation unchanged except to clear the signaling
   // bit if the value is NaN ("not a number").
   @inlinable
   internal var _quiet: Decimal128 {
-    @inline(__always) get {
+    @inline(always) get {
       _combinationBitPattern < 0x1f800
         ? self
         : Self(bitPattern: bitPattern ^ (1 &<< 121))
@@ -298,7 +298,7 @@ extension Decimal128 {
 
   @inlinable
   public var isInfinite: Bool {
-    @inline(__always) get {
+    @inline(always) get {
       let g = _combinationBitPattern
       return g >= 0x1e000 && g < 0x1f000
     }
@@ -306,19 +306,19 @@ extension Decimal128 {
 
   @inlinable
   public var isFinite: Bool {
-    @inline(__always) get { _combinationBitPattern < 0x1e000 }
+    @inline(always) get { _combinationBitPattern < 0x1e000 }
   }
 
   /// A Boolean value indicating whether this instance is both finite and not
   /// equal to zero.
   @inlinable
   internal var _isFiniteNonzero: Bool {
-    @inline(__always) get {
+    @inline(always) get {
       guard _combinationBitPattern < 0x18000 else { return false }
       // Having excluded all values where the combination field begins `11...`,
       // we know the represented significand is in the lower 113 bits.
       let c = bitPattern & (1 &<< 113 &- 1)
-      return c > 0 as UInt128 && c < 10_000_000_000_000_000_000_000_000_000_000_000
+      return c > 0 && c < 10_000_000_000_000_000_000_000_000_000_000_000
     }
   }
 
@@ -334,7 +334,7 @@ extension Decimal128 {
     // We don't need to consider noncanonical representations of zero separately
     // because their significand bit pattern would be necessary greater than the
     // upper limit we're testing for.
-    return c > 0 as UInt128 && c < UInt128._exp10(33 - Int(e))
+    return c > 0 && c < UInt128._exp10(33 - Int(e))
   }
 
   @inlinable
@@ -347,9 +347,10 @@ extension Decimal128 {
     let c = bitPattern & (1 &<< 113 &- 1)
     guard e < 33 else {
       // If the exponent isn't small, the value is normal if it's nonzero.
-      return c > 0 as UInt128 && c < 10_000_000_000_000_000_000_000_000_000_000_000
+      return c > 0 && c < 10_000_000_000_000_000_000_000_000_000_000_000
     }
-    return c >= UInt128._exp10(33 - Int(e))
+    return c >= UInt128._exp10(33 - Int(e)) &&
+      c < 10_000_000_000_000_000_000_000_000_000_000_000
   }
 
   @inlinable
@@ -362,7 +363,7 @@ extension Decimal128 {
     // Having excluded all values where the combination field begins `11...`,
     // we know the represented significand is in the lower 113 bits.
     let c = bitPattern & (1 &<< 113 &- 1)
-    return c == 0 || c > 9_999_999_999_999_999_999_999_999_999_999_999 as UInt128
+    return c == 0 || c > 9_999_999_999_999_999_999_999_999_999_999_999
   }
 }
 
@@ -394,7 +395,7 @@ extension Decimal128 {
         c &*= UInt128._exp10(Int(n))
         e &-= n
       }
-      if e != 0 && c <= 999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
+      if e != 0 && c <= 999_999_999_999_999_999_999_999_999_999_999 {
         c &*= 10
         e &-= 1
       }
@@ -420,20 +421,28 @@ extension Decimal128 {
 
   @inlinable
   public var nextDown: Decimal128 {
-    @inline(__always) get { -(-self).nextUp }
+    @inline(always) get { -(-self).nextUp }
   }
 
   @inlinable
   public var ulp: Decimal128 {
-    guard isFinite else { return .nan }
+    guard _isFiniteNonzero else {
+      if isNaN {
+        return .nan
+      }
+      return .leastNonzeroMagnitude
+    }
+    let e = exponentBitPattern
+    let c = significandBitPattern
     return Self(
-      sign: sign,
-      exponentBitPattern: exponentBitPattern,
+      sign: .plus,
+      exponentBitPattern: UInt(
+        truncatingIfNeeded: max(0, Int(e) &+ c._commonLogarithm &- 33)),
       significandBitPattern: 1)
   }
   // TODO: File bug to clarify documentation for `FloatingPoint.ulp`.
 
-  /// The quantum of this value.
+  /// The quantum, or decade, of this value.
   ///
   /// If `x` is finite, then `x.quantum` is equivalent to `x.ulp`. However,
   /// if `x` is infinite, then `x.quantum` is `infinity` even as `x.ulp` is NaN.
@@ -529,7 +538,7 @@ extension Decimal128 {
 
   @inlinable
   public var significand: Decimal128 {
-    guard isFinite else { return _canonical }
+    guard isFinite else { return magnitude._canonical }
     guard !isZero else { return Self() }
     let c = significandBitPattern
     let e = 6176 &- c._commonLogarithm
@@ -610,7 +619,7 @@ extension Decimal128: Hashable {
         // Preserve the payload (i.e., trailing significand bit pattern) only if
         // it is canonical.
         if _trailingSignificandBitPattern <=
-            999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
+            999_999_999_999_999_999_999_999_999_999_999 {
           mask |= 1 &<< 110 &- 1
         }
         return Self(bitPattern: bitPattern & mask)
@@ -634,7 +643,7 @@ extension Decimal128: Hashable {
       c &*= UInt128._exp10(Int(n))
       e &-= n
     }
-    if e != 0 && c <= 999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
+    if e != 0 && c <= 999_999_999_999_999_999_999_999_999_999_999 {
       c &*= 10
       e &-= 1
     }
@@ -705,8 +714,8 @@ extension Decimal128: Comparable {
     if n > 33 { return isSwapped }
     let (lc, rc) = (lhs.significandBitPattern, rhs.significandBitPattern)
     guard lc < rc else { return isSwapped }
-    return isSwapped !=
-      (lc.multipliedFullWidth(by: UInt128._exp10(n)) < (high: 0, low: rc))
+    let scaled = lc.multipliedFullWidth(by: UInt128._exp10(n))
+    return isSwapped ? scaled > (0, rc) : scaled < (0, rc)
   }
 
   @inlinable
@@ -736,7 +745,7 @@ extension Decimal128: ExpressibleByIntegerLiteral {
   @inlinable
   public init(integerLiteral value: Int128) {
     bitPattern = value.magnitude
-    guard bitPattern <= 9_999_999_999_999_999_999_999_999_999_999_999 as UInt128 else {
+    guard bitPattern <= 9_999_999_999_999_999_999_999_999_999_999_999 else {
       fatalError("Potentially inexact integer conversion not implemented")
     }
     bitPattern |= Self().bitPattern
@@ -831,7 +840,7 @@ extension Decimal128: AdditiveArithmetic {
         rem >= (pow &>> 1)
       case .toNearestOrEven:
         (quo & 1) == 0
-        ? (rem, rem_) > (pow &>> 1, 0 as UInt128)
+        ? (rem, rem_) > (pow &>> 1, 0)
         : rem >= (pow &>> 1)
       case .towardZero:
         false
@@ -847,7 +856,7 @@ extension Decimal128: AdditiveArithmetic {
 
     // Remove decimal digits from intermediate result, if necessary.
     var pow, quo, rem: UInt128
-    if hi != 0 as UInt128 {
+    if hi != 0 {
       // See explanatory comment in `UInt128._commonLogarithm`.
       // Note that here we underestimate.
       var n = ((77 &* (255 &- hi.leadingZeroBitCount)) &>> 8) &- 33
@@ -859,7 +868,7 @@ extension Decimal128: AdditiveArithmetic {
       }
       (quo, rem) = pow.dividingFullWidth((hi, lo))
       e &+= n
-    } else if lo > 9_999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
+    } else if lo > 9_999_999_999_999_999_999_999_999_999_999_999 {
       var n = ((77 &* (127 &- (lo|1).leadingZeroBitCount)) &>> 8) &- 33
       pow = UInt128._exp10(n)
       if lo >= pow &* 10_000_000_000_000_000_000_000_000_000_000_000 {
@@ -1004,7 +1013,7 @@ extension Decimal128: AdditiveArithmetic {
         c1 &*= UInt128._exp10(Int(n))
         e1 &-= n
       }
-      if e1 > e2 && c1 <= 999_999_999_999_999_999_999_999_999_999_999 as UInt128 {
+      if e1 > e2 && c1 <= 999_999_999_999_999_999_999_999_999_999_999 {
         c1 &*= 10
         e1 &-= 1
       }
@@ -1589,14 +1598,12 @@ extension Decimal128 {
     guard isFinite else {
       var result = canonicalBitPattern & (0x3f800 &<< 110)
       // Encode any NaN payload.
-      if c != (0 as UInt128) {
-        result |= _DPD.encode(c)
-      }
+      if c != 0 { result |= _DPD.encode(c) }
       // An early exit here avoids having to consider non-finite
       // combination field bit patterns later.
       return result
     }
-    let c10 = c != (0 as UInt128) ? _DPD.encode(c) : 0
+    let c10 = (c != 0) ? _DPD.encode(c) : 0
 
     // Though the biased exponent of a canonical finite value is always
     // encoded in the same bits in the *binary* encoding of `Decimal128`,
@@ -1674,7 +1681,7 @@ extension Decimal128 {
         bitPattern = decimalEncoding & (0x3f800 &<< 110)
         // Decode any NaN payload.
         let payload10 = decimalEncoding & (1 &<< 110 &- 1)
-        if payload10 != (0 as UInt128) {
+        if payload10 != 0 {
           bitPattern |= _DPD.decode(payload10)
         }
       }
@@ -1707,7 +1714,7 @@ extension Decimal128 {
     bitPattern |= (decimalEncoding & (0xfff &<< 110)) &<< 3
     // Copy the decoding of the concatenated significand,
     // which we know cannot exceed 113 bits.
-    bitPattern |= c10 != (0 as UInt128) ? _DPD.decode(c10) : 0
+    bitPattern |= (c10 != 0) ? _DPD.decode(c10) : 0
   }
 }
 
