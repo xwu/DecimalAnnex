@@ -424,6 +424,7 @@ extension Decimal128 {
     @inline(always) get { -(-self).nextUp }
   }
 
+  // TODO: Clarify documentation for `FloatingPoint.ulp`.
   @inlinable
   public var ulp: Decimal128 {
     guard _isFiniteNonzero else {
@@ -440,39 +441,100 @@ extension Decimal128 {
         truncatingIfNeeded: max(0, Int(e) &+ c._commonLogarithm &- 33)),
       significandBitPattern: 1)
   }
-  // TODO: File bug to clarify documentation for `FloatingPoint.ulp`.
 
-  /// The quantum, or decade, of this value.
+  /// The quantum of this value.
   ///
-  /// If `x` is finite, then `x.quantum` is equivalent to `x.ulp`. However,
-  /// if `x` is infinite, then `x.quantum` is `infinity` even as `x.ulp` is NaN.
+  /// If `x` is finite, then `x.quantum` is the floating-point value with
+  /// positive sign and the same represented exponent as this value, but with a
+  /// significand of 1.0.
+  /// If `x` is infinite, then `x.quantum` is positive `infinity`.
   ///
   /// This property implements the `quantum` operation defined by the IEEE 754
-  /// specification.
+  /// specification. Unlike `BinaryFloatingPoint.binade`, the result of this
+  /// operation is always positive.
   @inlinable
+  @inline(always)
   public var quantum: Decimal128 {
+    var flags: DecimalFloatingPointStatusFlags = []
+    return quantum(&flags)
+  }
+
+  /// Returns the quantum of this value, accumulating status flags.
+  ///
+  /// If `x` is finite, then the result is the floating-point value with
+  /// positive sign and the same represented exponent as this value, but with a
+  /// significand of 1.0.
+  /// If `x` is infinite, then the result is positive `infinity`.
+  ///
+  /// This method implements the `quantum` operation defined by the IEEE 754
+  /// specification. Unlike `BinaryFloatingPoint.binade`, the result of this
+  /// operation is always positive.
+  @inlinable
+  public func quantum(
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
     guard isFinite else {
-      let result = Self(bitPattern: bitPattern & Self.nan.bitPattern)
-      return isSignalingNaN ? _signal(.invalid, default: result) : result
+      if isSignalingNaN {
+        flags.insert(.invalid)
+        return _quiet._canonical
+      }
+      if isNaN {
+        return _canonical
+      }
+      return .infinity
     }
     // Exact result.
     // Under default exception handling, no underflow is signaled.
     return Self(
-      sign: sign,
+      sign: .plus,
       exponentBitPattern: exponentBitPattern,
       significandBitPattern: 1)
   }
 
+  @inlinable
+  @inline(always)
+  public mutating func quantize(
+    by other: Decimal128,
+    rounding rule: FloatingPointRoundingRule
+  ) {
+    var flags: DecimalFloatingPointStatusFlags = []
+    quantize(by: other, rounding: rule, &flags)
+  }
+
+  @inlinable
+  @inline(always)
+  public mutating func quantize(
+    by other: Decimal128,
+    rounding rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = quantized(by: other, rounding: rule, &flags)
+  }
+
+  @inlinable
+  @inline(always)
   public func quantized(
     by other: Decimal128,
     rounding rule: FloatingPointRoundingRule = .toNearestOrEven
   ) -> Decimal128 {
-    guard _isFiniteNonzero else {
+    var flags: DecimalFloatingPointStatusFlags = []
+    return quantized(by: other, rounding: rule, &flags)
+  }
+
+  @inlinable
+  public func quantized(
+    by other: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    guard isFinite && other.isFinite else {
       if isSignalingNaN {
-        return _signal(.invalid, default: _quiet._canonical)
+        flags.insert(.invalid)
+        return _quiet._canonical
       }
       if other.isSignalingNaN {
-        return _signal(.invalid, default: other._quiet._canonical)
+        flags.insert(.invalid)
+        return other._quiet._canonical
       }
 
       if isNaN {
@@ -482,23 +544,47 @@ extension Decimal128 {
         return other._canonical
       }
 
-      if isInfinite {
-        if other.isInfinite { return _isSignMinus ? -.infinity : .infinity }
-        return _signal(.invalid, default: .nan)
+      if isInfinite && other.isFinite {
+        return _isSignMinus ? -.infinity : .infinity
       }
-      if other.isInfinite {
-        return _signal(.invalid, default: .nan)
-      }
-
-      if isZero {
-        return Self(
-          sign: sign,
-          exponentBitPattern: other.exponentBitPattern,
-          significandBitPattern: 0)
-      }
-      fatalError("Not implemented")
+      flags.insert(.invalid)
+      return .nan
     }
-    fatalError("Not implemented")
+    let oe = other.exponentBitPattern
+    if isZero {
+      return Self(sign: sign, exponentBitPattern: oe, significandBitPattern: 0)
+    }
+    let n = Int(exponentBitPattern) - Int(oe)
+    var c = significandBitPattern
+    if n >= 0 {
+      guard n <= 33 - c._commonLogarithm else {
+        flags.insert(.invalid)
+        return .nan
+      }
+      c &*= UInt128._exp10(n)
+    } else {
+      let digit: UInt128
+      let sticky: Bool
+      if n < -34 {
+        (c, digit) = (0, 0)
+        sticky = true
+      } else {
+        let divisor = UInt128._exp10(-n &- 1)
+        let (q, r) = c.quotientAndRemainder(dividingBy: divisor) // TODO: Implement fast path for power-of-ten division.
+        (c, digit) = q.quotientAndRemainder(dividingBy: 10)
+        sticky = r != 0
+      }
+      let digit_ = UInt8(digit)
+      if Self._roundAway(_isSignMinus, c, digit_, sticky, rule) {
+        c &+= 1
+      }
+      if c >= 10_000_000_000_000_000_000_000_000_000_000_000 {
+        flags.insert(.invalid)
+        return .nan
+      }
+      if digit_ != 0 || sticky { flags.insert(.inexact) }
+    }
+    return Self(sign: sign, exponentBitPattern: oe, significandBitPattern: c)
   }
 
   /// Returns a Boolean value indicating whether this value has the same quantum
@@ -755,6 +841,30 @@ extension Decimal128: ExpressibleByIntegerLiteral {
 
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 extension Decimal128: AdditiveArithmetic {
+  @inlinable
+  @inline(always)
+  internal static func _roundAway(
+    _ isSignMinus: Bool,
+    _ significand: UInt128,
+    _ digit: UInt8,
+    _ sticky: Bool,
+    _ rule: FloatingPointRoundingRule
+  ) -> Bool {
+    assert(digit < 10)
+    guard digit != 0 || sticky else { return false }
+    switch rule {
+    case .toNearestOrEven:
+      return digit > 5 || (digit == 5 && (sticky || (significand & 1) != 0))
+    case .toNearestOrAwayFromZero:
+      return digit >= 5
+    case .up: return !isSignMinus
+    case .down: return isSignMinus
+    case .awayFromZero: return true
+    case .towardZero: return false
+    @unknown default: fatalError("Unknown rounding rule.")
+    }
+  }
+
   @inlinable
   @inline(__always)
   internal static func _round(
