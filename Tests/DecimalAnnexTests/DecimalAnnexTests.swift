@@ -86,7 +86,7 @@ final class DecimalAnnexTests: XCTestCase {
     ) else { return }
 
     let x = Decimal128.pi
-    XCTAssertEqual(x.description, "3.141592653589793238462643383279502")
+    XCTAssertEqual(x.description, "3.141592653589793238462643383279503")
   }
 
   // TODO: Test `nextUp`.

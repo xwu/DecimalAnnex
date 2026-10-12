@@ -1,4 +1,4 @@
-/// A 128-bit decimal floating-point value.
+/// A 128-bit decimal floating-point value type.
 @available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
 @frozen
 public struct Decimal128: BitwiseCopyable, Sendable {
@@ -575,7 +575,13 @@ extension Decimal128 {
         sticky = r != 0
       }
       let digit_ = UInt8(digit)
-      if Self._roundAway(_isSignMinus, c, digit_, sticky, rule) {
+      if Self._roundsAway(
+        isSignMinus: _isSignMinus,
+        significand: c,
+        digit: digit_,
+        sticky: sticky,
+        rule
+      ) {
         c &+= 1
       }
       if c >= 10_000_000_000_000_000_000_000_000_000_000_000 {
@@ -843,11 +849,11 @@ extension Decimal128: ExpressibleByIntegerLiteral {
 extension Decimal128: AdditiveArithmetic {
   @inlinable
   @inline(always)
-  internal static func _roundAway(
-    _ isSignMinus: Bool,
-    _ significand: UInt128,
-    _ digit: UInt8,
-    _ sticky: Bool,
+  internal static func _roundsAway(
+    isSignMinus: Bool,
+    significand: UInt128,
+    digit: UInt8,
+    sticky: Bool,
     _ rule: FloatingPointRoundingRule
   ) -> Bool {
     assert(digit < 10)
@@ -866,122 +872,108 @@ extension Decimal128: AdditiveArithmetic {
   }
 
   @inlinable
-  @inline(__always)
+  @inline(always)
+  internal static func _overflow(
+    isSignMinus: Bool,
+    _ rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    let infinite: Bool =
+      switch rule {
+      case .toNearestOrEven: true
+      case .toNearestOrAwayFromZero: true
+      case .up: !isSignMinus
+      case .down: isSignMinus
+      case .awayFromZero: true
+      case .towardZero: false
+      @unknown default: fatalError("Unknown rounding rule.")
+      }
+    let magnitude: Self = infinite ? .infinity : .greatestFiniteMagnitude
+    flags.formUnion(.overflowInexact)
+    return isSignMinus ? -magnitude : magnitude
+  }
+
+  @inlinable
   internal static func _round(
-    _ isSignMinus: Bool,
-    _ biasedExponent: Int,
-    _ significand: (high: UInt128, low: UInt128),
-    _ rule: FloatingPointRoundingRule
+      isSignMinus: Bool,
+      biasedExponent: Int,
+      significand: (high: UInt128, low: UInt128),
+      sticky: Bool = false,
+      preferredBiasedExponent: Int? = nil,
+      _ rule: FloatingPointRoundingRule,
+      _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
     var e = biasedExponent
+    let pe = min(12287, max(0, preferredBiasedExponent ?? e))
     let (hi, lo) = significand
+    assert(!sticky || (hi, lo) >= (0, 10_000_000_000_000_000_000_000_000_000_000_000))
+    // FIXME: Also assert significand has at most 70 decimal digits.
+    if (hi, lo) == (0, 0) {
+      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: pe) &<< 113)
+      return isSignMinus ? -abs : abs
+    }
+    if e > 12320 {
+      return _overflow(isSignMinus: isSignMinus, rule, &flags)
+    }
+    if e < -70 {
+      let nextAway = _roundsAway(
+        isSignMinus: isSignMinus,
+        significand: 0,
+        digit: 0,
+        sticky: true,
+        rule)
+      let abs = Self(bitPattern: nextAway ? 1 : 0)
+      flags.formUnion(.underflowInexact)
+      return isSignMinus ? -abs : abs
+    }
 
     // Per IEEE 754, detect tininess (i.e., underflow) before rounding.
-    let isTiny: Bool = if e < -34 {
+    let isTiny: Bool = if e < -36 {
       true
     } else if e < -5 {
       hi == 0 || (hi, lo) <
-        UInt128._exp10(-e).multipliedFullWidth(
-          by: 1_000_000_000_000_000_000_000_000_000_000_000)
+        UInt128._exp10(-e).multipliedFullWidth(by: 1_000_000_000_000_000_000_000_000_000_000_000)
     } else if e < 33 {
       hi == 0 && lo < UInt128._exp10(33 &- e)
     } else {
       false
     }
 
-    guard !isTiny else {
-      if e < -68 {
-        // The magnitude of the result is less than
-        // 1/2 * .leastNonzeroMagnitude.
-        let nextAway: Bool = switch rule {
-        case .awayFromZero:
-          true
-        case .down:
-          isSignMinus
-        case .toNearestOrAwayFromZero:
-          false
-        case .toNearestOrEven:
-          false
-        case .towardZero:
-          false
-        case .up:
-          !isSignMinus
-        @unknown default:
-          fatalError("Unknown rounding rule.")
-        }
-        let abs = Self(bitPattern: nextAway ? 1 : 0)
-        return _signal(.underflowInexact, default: isSignMinus ? -abs : abs)
-      }
-
-      // Remove decimal digits from intermediate result, if necessary.
-      let pow, quo, rem, rem_: UInt128
+    // Remove decimal digits from intermediate result, if necessary.
+    var pow, quo, rem: UInt128
+    var sticky = sticky
+    if isTiny {
       if e < -38 {
-        let _x = _UInt256(hi, lo)._quotientAndRemainderDividingBy1e38()
-        let quo_ = _x.quotient.low
-        rem_ = _x.remainder.low
+        let (q, r) = _UInt256(hi, lo)._quotientAndRemainderDividingBy1e38()
+        if r.low != 0 { sticky = true }
         pow = UInt128._exp10(-e &- 38)
-        (quo, rem) = quo_.quotientAndRemainder(dividingBy: pow)
+        (quo, rem) = q.low.quotientAndRemainder(dividingBy: pow) // TODO: Fast path.
         e = 0
       } else if e < 0 {
-        rem_ = 0
         pow = UInt128._exp10(-e)
-        (quo, rem) = pow.dividingFullWidth((hi, lo))
+        (quo, rem) = pow.dividingFullWidth((hi, lo)) // TODO: Fast path.
         e = 0
       } else {
-        rem_ = 0
         pow = 1
         (quo, rem) = (lo, 0)
       }
-
-      if (rem, rem_) == (0, 0) {
-        // Exact result.
-        // Under default exception handling, no underflow is signaled.
-        let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | quo)
-        return isSignMinus ? -abs : abs
-      }
-
-      // Inexact.
-      let nextAway: Bool = switch rule {
-      case .awayFromZero:
-        true
-      case .down:
-        isSignMinus
-      case .toNearestOrAwayFromZero:
-        rem >= (pow &>> 1)
-      case .toNearestOrEven:
-        (quo & 1) == 0
-        ? (rem, rem_) > (pow &>> 1, 0)
-        : rem >= (pow &>> 1)
-      case .towardZero:
-        false
-      case .up:
-        !isSignMinus
-      @unknown default:
-        fatalError("Unknown rounding rule.")
-      }
-      assert(e == 0)
-      let abs = Self(bitPattern: nextAway ? quo &+ 1 : quo)
-      return _signal(.underflowInexact, default: isSignMinus ? -abs : abs)
-    }
-
-    // Remove decimal digits from intermediate result, if necessary.
-    var pow, quo, rem: UInt128
-    if hi != 0 {
+    } else if hi != 0 {
       // See explanatory comment in `UInt128._commonLogarithm`.
       // Note that here we underestimate.
       var n = ((77 &* (255 &- hi.leadingZeroBitCount)) &>> 8) &- 33
       pow = UInt128._exp10(n)
-      if (hi, lo) >=
-          pow.multipliedFullWidth(by: 10_000_000_000_000_000_000_000_000_000_000_000) {
+      if (hi, lo) >= pow.multipliedFullWidth(by: 10_000_000_000_000_000_000_000_000_000_000_000) {
         n &+= 1
         pow &*= 10
       }
       (quo, rem) = pow.dividingFullWidth((hi, lo))
       e &+= n
-    } else if lo > 9_999_999_999_999_999_999_999_999_999_999_999 {
+    } else if lo >= 10_000_000_000_000_000_000_000_000_000_000_000 {
       var n = ((77 &* (127 &- (lo|1).leadingZeroBitCount)) &>> 8) &- 33
       pow = UInt128._exp10(n)
-      if lo >= pow &* 10_000_000_000_000_000_000_000_000_000_000_000 {
+      let (x, overflow) =
+        pow.multipliedReportingOverflow(by: 10_000_000_000_000_000_000_000_000_000_000_000)
+      if !overflow && lo >= x {
         n &+= 1
         pow &*= 10
       }
@@ -992,57 +984,60 @@ extension Decimal128: AdditiveArithmetic {
       (quo, rem) = (lo, 0)
     }
 
-    guard e <= 12287 else {
-      // Overflow.
-      let x: Self = switch rule {
-      case .awayFromZero:
-        isSignMinus ? -.infinity : .infinity
-      case .down:
-        isSignMinus ? -.infinity : .greatestFiniteMagnitude
-      case .toNearestOrAwayFromZero:
-        isSignMinus ? -.infinity : .infinity
-      case .toNearestOrEven:
-        isSignMinus ? -.infinity : .infinity
-      case .towardZero:
-        isSignMinus ? -.greatestFiniteMagnitude : .greatestFiniteMagnitude
-      case .up:
-        isSignMinus ? -.greatestFiniteMagnitude : .infinity
-      @unknown default:
-        fatalError("Unknown rounding rule.")
+    let inexact = rem != 0 || sticky
+    if !inexact {
+      // Select exact cohort before checking for overflow.
+      if e < pe {
+        while e < pe && quo % 10 == 0 { // TODO: Optimize this divisibility test.
+          quo /= 10
+          e &+= 1
+        }
+      } else if e > pe {
+        let estimate = ((19 &* (127 &- quo.leadingZeroBitCount)) &>> 6) &+ 1
+        let n = min(e &- pe, max(0, 33 &- estimate))
+        if n > 0 {
+          quo *= UInt128._exp10(n)
+          e &-= n
+        }
+        if e > pe && quo < 1_000_000_000_000_000_000_000_000_000_000_000 {
+          quo *= 10
+          e &-= 1
+        }
       }
-      return _signal(.overflow, default: x)
     }
 
-    if rem == 0 {
+    guard e <= 12287 else {
+      return _overflow(isSignMinus: isSignMinus, rule, &flags)
+    }
+    if !inexact {
       // Exact result.
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | quo)
       return isSignMinus ? -abs : abs
     }
 
     // Inexact.
-    let nextAway: Bool = switch rule {
-    case .awayFromZero:
-      true
-    case .down:
-      isSignMinus
-    case .toNearestOrAwayFromZero:
-      rem >= (pow &>> 1)
-    case .toNearestOrEven:
-      (quo & 1) == 0
-        ? rem > (pow &>> 1)
-        : rem >= (pow &>> 1)
-    case .towardZero:
-      false
-    case .up:
-      !isSignMinus
-    @unknown default:
-      fatalError("Unknown rounding rule.")
-    }
+    let nextAway: Bool =
+      switch rule {
+      case .awayFromZero:
+        true
+      case .down:
+        isSignMinus
+      case .toNearestOrAwayFromZero:
+        rem >= (pow &>> 1)
+      case .toNearestOrEven:
+        rem > (pow &>> 1) || (rem == (pow &>> 1) && (sticky || (quo & 1) != 0))
+      case .towardZero:
+        false
+      case .up:
+        !isSignMinus
+      @unknown default:
+        fatalError("Unknown rounding rule.")
+      }
     if nextAway {
       if quo == 9_999_999_999_999_999_999_999_999_999_999_999 {
         if e == 12287 {
-          return _signal(
-            .overflowInexact, default: isSignMinus ? -.infinity : .infinity)
+          flags.formUnion(.overflowInexact)
+          return isSignMinus ? -.infinity : .infinity
         }
         quo = 1_000_000_000_000_000_000_000_000_000_000_000
         e &+= 1
@@ -1051,7 +1046,12 @@ extension Decimal128: AdditiveArithmetic {
       }
     }
     let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | quo)
-    return _signal(.inexact, default: isSignMinus ? -abs : abs)
+    if isTiny {
+      flags.formUnion(.underflowInexact)
+    } else {
+      flags.insert(.inexact)
+    }
+    return isSignMinus ? -abs : abs
   }
 
   /// Returns the result of adding the given value to this value,
@@ -1064,18 +1064,31 @@ extension Decimal128: AdditiveArithmetic {
   ///   - rhs: The value to add to this value.
   ///   - rule: The rounding rule for computing an inexact result.
   @inlinable
+  @inline(always)
   public func adding(
     _ rhs: Decimal128,
     rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) -> Decimal128 {
+    var flags: DecimalFloatingPointStatusFlags = []
+    return adding(rhs, rounding: rule, &flags)
+  }
+
+  @inlinable
+  public func adding(
+    _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
+    _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
     var lhs = self, rhs = rhs
 
     guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
       if lhs.isSignalingNaN {
-        return _signal(.invalid, default: lhs._quiet._canonical)
+        flags.insert(.invalid)
+        return lhs._quiet._canonical
       }
       if rhs.isSignalingNaN {
-        return _signal(.invalid, default: rhs._quiet._canonical)
+        flags.insert(.invalid)
+        return rhs._quiet._canonical
       }
 
       if lhs.isNaN {
@@ -1088,7 +1101,8 @@ extension Decimal128: AdditiveArithmetic {
       if lhs.isInfinite {
         let isSignMinus = lhs._isSignMinus
         if rhs.isInfinite && isSignMinus != rhs._isSignMinus {
-          return _signal(.invalid, default: .nan)
+          flags.insert(.invalid)
+          return .nan
         }
         return isSignMinus ? -.infinity : .infinity
       }
@@ -1143,7 +1157,7 @@ extension Decimal128: AdditiveArithmetic {
     var c1 = lhs.significandBitPattern
     let logc1 = c1._commonLogarithm
     let c2 = rhs.significandBitPattern
-    if n &+ (logc1 &- c2._commonLogarithm) > 34 {
+    if n &+ (logc1 &- c2._commonLogarithm) > 35 {
       // Inexact.
       var isTiny = false
       if logc1 < 33 {
@@ -1171,8 +1185,8 @@ extension Decimal128: AdditiveArithmetic {
         if nextAway {
           if c1 == 9_999_999_999_999_999_999_999_999_999_999_999 {
             if e1 == 12287 {
-              return _signal(
-                .overflowInexact, default: isSignMinus ? -.infinity : .infinity)
+              flags.formUnion(.overflowInexact)
+              return isSignMinus ? -.infinity : .infinity
             }
             c1 = 1_000_000_000_000_000_000_000_000_000_000_000
             e1 &+= 1
@@ -1205,15 +1219,21 @@ extension Decimal128: AdditiveArithmetic {
         }
       }
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e1) &<< 113 | c1)
-      return _signal(
-        isTiny ? .underflowInexact : .inexact,
-        default: isSignMinus ? -abs : abs)
+      if isTiny {
+        flags.formUnion(.underflowInexact)
+      } else {
+        flags.insert(.inexact)
+      }
+      return isSignMinus ? -abs : abs
     }
 
     // Compute the intermediate result.
     var (hi, lo) = n == 0
       ? (0, c1)
-      : c1.multipliedFullWidth(by: UInt128._exp10(n))
+      : n <= 38
+        ? c1.multipliedFullWidth(by: UInt128._exp10(n))
+        : (c1 * UInt128._exp10(n &- 34))
+          .multipliedFullWidth(by: 10_000_000_000_000_000_000_000_000_000_000_000)
     if isSignMinus == rhs._isSignMinus {
       let carry: Bool
       (lo, carry) = lo.addingReportingOverflow(c2)
@@ -1236,7 +1256,12 @@ extension Decimal128: AdditiveArithmetic {
       }
     }
 
-    return ._round(isSignMinus, Int(e2), (hi, lo), rule)
+    return Self._round(
+      isSignMinus: isSignMinus,
+      biasedExponent: Int(e2),
+      significand: (hi, lo),
+      rule,
+      &flags)
   }
 
   /// Adds the given value to this value in place,
@@ -1246,12 +1271,22 @@ extension Decimal128: AdditiveArithmetic {
   ///   - rhs: The value to add to this value.
   ///   - rule: The rounding rule for computing an inexact result.
   @inlinable
-  @inline(__always)
+  @inline(always)
   public mutating func add(
     _ rhs: Decimal128,
     rounding rule: FloatingPointRoundingRule = .toNearestOrEven
   ) {
     self = adding(rhs, rounding: rule)
+  }
+
+  @inlinable
+  @inline(always)
+  public mutating func add(
+    _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = adding(rhs, rounding: rule, &flags)
   }
 
   /// Adds two values and produces their sum,
@@ -1264,7 +1299,7 @@ extension Decimal128: AdditiveArithmetic {
   ///   - lhs: The first value to add.
   ///   - rhs: The second value to add.
   @inlinable
-  @inline(__always)
+  @inline(always)
   public static func + (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
     lhs.adding(rhs)
   }
@@ -1276,7 +1311,7 @@ extension Decimal128: AdditiveArithmetic {
   ///   - lhs: The first value to add.
   ///   - rhs: The second value to add.
   @inlinable
-  @inline(__always)
+  @inline(always)
   public static func += (lhs: inout Decimal128, rhs: Decimal128) {
     lhs = lhs + rhs
   }
@@ -1296,7 +1331,8 @@ extension Decimal128: AdditiveArithmetic {
     _ rhs: Decimal128,
     rounding rule: FloatingPointRoundingRule = .toNearestOrEven
   ) -> Decimal128 {
-    adding(-rhs, rounding: rule)
+    var flags: DecimalFloatingPointStatusFlags = []
+    return adding(-rhs, rounding: rule, &flags)
   }
 
   /// Subtracts the given value from this value in place,
@@ -1306,7 +1342,7 @@ extension Decimal128: AdditiveArithmetic {
   ///   - rhs: The value to subtract from this value.
   ///   - rule: The rounding rule to use for computing an inexact result.
   @inlinable
-  @inline(__always)
+  @inline(always)
   public mutating func subtract(
     _ rhs: Decimal128,
     rounding rule: FloatingPointRoundingRule = .toNearestOrEven
@@ -1324,7 +1360,7 @@ extension Decimal128: AdditiveArithmetic {
   ///   - lhs: A numeric value.
   ///   - rhs: The value to subtract from `lhs`.
   @inlinable
-  @inline(__always)
+  @inline(always)
   public static func - (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
     lhs.subtracting(rhs)
   }
@@ -1336,7 +1372,7 @@ extension Decimal128: AdditiveArithmetic {
   ///   - lhs: A numeric value.
   ///   - rhs: The value to subtract from `lhs`.
   @inlinable
-  @inline(__always)
+  @inline(always)
   public static func -= (lhs: inout Decimal128, rhs: Decimal128) {
     lhs = lhs - rhs
   }
@@ -1396,7 +1432,13 @@ extension Decimal128: Numeric {
       lhs.significandBitPattern.multipliedFullWidth(
         by: rhs.significandBitPattern)
 
-    return ._round(isSignMinus, e, (hi, lo), rule)
+    var flags: DecimalFloatingPointStatusFlags = []
+    return ._round(
+      isSignMinus: isSignMinus,
+      biasedExponent: e,
+      significand: (hi, lo),
+      rule,
+      &flags)
   }
 
   /// Multiplies this value by the given value in place, rounding to a

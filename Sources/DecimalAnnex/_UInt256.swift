@@ -62,7 +62,7 @@ extension _UInt256: CustomStringConvertible {
       var value = self, count = 0
       while value != 0 {
         let (q, r) = value._quotientAndRemainderDividingBy10()
-        buff.initializeElement(
+        unsafe buff.initializeElement(
           at: count,
           to: 48 /* '0' */ &+ UInt8(truncatingIfNeeded: r.low))
         count += 1
@@ -71,12 +71,12 @@ extension _UInt256: CustomStringConvertible {
       // Reverse the initialized elements of `buff`.
       var a = 0, b = count &- 1
       while a < b {
-        buff.swapAt(a, b)
+        unsafe buff.swapAt(a, b)
         b -= 1
         a += 1
       }
       return String(unsafeUninitializedCapacity: count) {
-        return $0.initialize(fromContentsOf: buff[..<count])
+        return unsafe $0.initialize(fromContentsOf: buff[..<count])
       }
     }
   }
@@ -557,6 +557,17 @@ extension _UInt256 {
       m &*= 10_000_000_000_000_000_000
     }
     return n < 0 ? 0 : m &* _UInt256(0, UInt128(table[n]))
+  }
+
+  @inlinable
+  internal func _quotientAndRemainderDividingBy1e6()
+  -> (quotient: Self, remainder: Self) {
+    let m = Self(
+      0x8637BD05AF6C69B5A63F9A49C2C1B10F,
+      0xD7E45803CD141A6937D1FE64F54D1E97)
+    let q = multipliedFullWidth(by: m).high &>> 19
+    let r = self &- q &* 1_000_000
+    return (q, r)
   }
 
   @inlinable
