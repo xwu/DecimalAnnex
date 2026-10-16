@@ -180,7 +180,7 @@ extension _DPD {
     // See also:
     // https://lemire.me/blog/2021/11/18/converting-integers-to-fix-digit-representations-quickly/
 
-    let (abcdef, ghijkm) = significand._quotientAndRemainderDividingBy1e18()
+    let (abcdef, ghijkm) = significand._quotientAndRemainder(dividingBy1e: 18)
 
     let (abc, def) =
       UInt64(truncatingIfNeeded: abcdef)

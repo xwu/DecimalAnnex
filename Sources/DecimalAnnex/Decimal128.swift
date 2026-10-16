@@ -228,9 +228,7 @@ extension Decimal128 {
       //   zero; and
       // - the payload, which is the trailing significand field, is not more
       //   than 10 ** 33 - 1 (note the exponent).
-      return g & 0x7ff == 0 &&
-        _trailingSignificandBitPattern <=
-          999_999_999_999_999_999_999_999_999_999_999
+      return g & 0x7ff == 0 && _trailingSignificandBitPattern < ._1e33
     }
     guard g < 0x1e000 else {
       // Infinity.
@@ -241,8 +239,7 @@ extension Decimal128 {
     guard g < 0x18000 else { return false }
     // Having excluded all values where the combination field begins `11...`,
     // we know the represented significand is in the lower 113 bits.
-    return bitPattern & (1 &<< 113 &- 1) <=
-      9_999_999_999_999_999_999_999_999_999_999_999
+    return bitPattern & (1 &<< 113 &- 1) < ._1e34
   }
 
   /// The value represented in its canonical form.
@@ -255,8 +252,7 @@ extension Decimal128 {
     let g = _combinationBitPattern
     guard g < 0x1f000 else {
       var mask: UInt128 = 0x3f800 &<< 110
-      if _trailingSignificandBitPattern <=
-          999_999_999_999_999_999_999_999_999_999_999 {
+      if _trailingSignificandBitPattern < ._1e33 {
         mask |= 1 &<< 110 &- 1
       }
       return Self(bitPattern: bitPattern & mask)
@@ -264,9 +260,7 @@ extension Decimal128 {
     guard g < 0x1e000 else {
       return Self(bitPattern: bitPattern & (0x3e000 &<< 110))
     }
-    guard g < 0x18000 &&
-      (bitPattern & (1 &<< 113 &- 1) <=
-        9_999_999_999_999_999_999_999_999_999_999_999) else {
+    guard g < 0x18000 && (bitPattern & (1 &<< 113 &- 1) < ._1e34) else {
       return Self(
         sign: sign,
         exponentBitPattern: exponentBitPattern,
@@ -318,7 +312,7 @@ extension Decimal128 {
       // Having excluded all values where the combination field begins `11...`,
       // we know the represented significand is in the lower 113 bits.
       let c = bitPattern & (1 &<< 113 &- 1)
-      return c > 0 && c < 10_000_000_000_000_000_000_000_000_000_000_000
+      return c > 0 && c < ._1e34
     }
   }
 
@@ -334,7 +328,7 @@ extension Decimal128 {
     // We don't need to consider noncanonical representations of zero separately
     // because their significand bit pattern would be necessary greater than the
     // upper limit we're testing for.
-    return c > 0 && c < UInt128._exp10(33 - Int(e))
+    return unsafe c > 0 && c < UInt128._exp10[unchecked: 33 - Int(e)]
   }
 
   @inlinable
@@ -347,10 +341,9 @@ extension Decimal128 {
     let c = bitPattern & (1 &<< 113 &- 1)
     guard e < 33 else {
       // If the exponent isn't small, the value is normal if it's nonzero.
-      return c > 0 && c < 10_000_000_000_000_000_000_000_000_000_000_000
+      return c > 0 && c < ._1e34
     }
-    return c >= UInt128._exp10(33 - Int(e)) &&
-      c < 10_000_000_000_000_000_000_000_000_000_000_000
+    return unsafe c >= UInt128._exp10[unchecked: 33 - Int(e)] && c < ._1e34
   }
 
   @inlinable
@@ -363,7 +356,7 @@ extension Decimal128 {
     // Having excluded all values where the combination field begins `11...`,
     // we know the represented significand is in the lower 113 bits.
     let c = bitPattern & (1 &<< 113 &- 1)
-    return c == 0 || c > 9_999_999_999_999_999_999_999_999_999_999_999
+    return c == 0 || c >= ._1e34
   }
 }
 
@@ -386,31 +379,31 @@ extension Decimal128 {
     var e = exponentBitPattern
     var c = significandBitPattern
     if e != 0 {
-      // Estimate log10(c). See `UInt128._log10` for a detailed explanation.
+      // Estimate log10(c). See `UInt128._commonLogarithm` for more explanation.
       // It is important that this estimate be at least the true floor log10 and
       // at most one greater.
       let estimate = ((19 &* (127 &- (c|1).leadingZeroBitCount)) &>> 6) &+ 1
       let n = min(e, UInt(max(0, 33 &- estimate)))
       if n != 0 {
-        c &*= UInt128._exp10(Int(n))
+        c &*= unsafe ._exp10[unchecked: Int(n)]
         e &-= n
       }
-      if e != 0 && c <= 999_999_999_999_999_999_999_999_999_999_999 {
+      if e != 0 && c < ._1e33 {
         c &*= 10
         e &-= 1
       }
     }
     if _isSignMinus {
-      if e != 0 && c == 1_000_000_000_000_000_000_000_000_000_000_000 {
-        c = 9_999_999_999_999_999_999_999_999_999_999_999
+      if e != 0 && c == ._1e33 {
+        c = ._1e34 &- 1
         e &-= 1
       } else {
         c &-= 1
       }
     } else {
-      if c == 9_999_999_999_999_999_999_999_999_999_999_999 {
+      if c == ._1e34 &- 1 {
         if e == 12287 { return .infinity }
-        c = 1_000_000_000_000_000_000_000_000_000_000_000
+        c = ._1e33
         e &+= 1
       } else {
         c &+= 1
@@ -561,7 +554,7 @@ extension Decimal128 {
         flags.insert(.invalid)
         return .nan
       }
-      c &*= UInt128._exp10(n)
+      c &*= unsafe ._exp10[unchecked: n]
     } else {
       let digit: UInt128
       let sticky: Bool
@@ -569,8 +562,7 @@ extension Decimal128 {
         (c, digit) = (0, 0)
         sticky = true
       } else {
-        let divisor = UInt128._exp10(-n &- 1)
-        let (q, r) = c.quotientAndRemainder(dividingBy: divisor) // TODO: Implement fast path for power-of-ten division.
+        let (q, r) = c._quotientAndRemainder(dividingBy1e: -n &- 1)
         (c, digit) = q.quotientAndRemainder(dividingBy: 10)
         sticky = r != 0
       }
@@ -584,7 +576,7 @@ extension Decimal128 {
       ) {
         c &+= 1
       }
-      if c >= 10_000_000_000_000_000_000_000_000_000_000_000 {
+      if c >= ._1e34 {
         flags.insert(.invalid)
         return .nan
       }
@@ -691,7 +683,7 @@ extension Decimal128: Equatable {
     if n > 33 { return false }
     let (lc, rc) = (lhs.significandBitPattern, rhs.significandBitPattern)
     guard lc < rc else { return false }
-    return lc.multipliedFullWidth(by: UInt128._exp10(n)) == (high: 0, low: rc)
+    return unsafe lc.multipliedFullWidth(by: ._exp10[unchecked: n]) == (0, rc)
   }
 }
 
@@ -710,8 +702,7 @@ extension Decimal128: Hashable {
         var mask: UInt128 = 0x3f000 &<< 110
         // Preserve the payload (i.e., trailing significand bit pattern) only if
         // it is canonical.
-        if _trailingSignificandBitPattern <=
-            999_999_999_999_999_999_999_999_999_999_999 {
+        if _trailingSignificandBitPattern < ._1e33 {
           mask |= 1 &<< 110 &- 1
         }
         return Self(bitPattern: bitPattern & mask)
@@ -726,16 +717,16 @@ extension Decimal128: Hashable {
     var e = exponentBitPattern
     guard e != 0 else { return self }
     var c = significandBitPattern
-    // Estimate log10(c). See `UInt128._log10` for a detailed explanation.
+    // Estimate log10(c). See `UInt128._commonLogarithm` for more explanation.
     // It is important that this estimate be at least the true floor log10 and
     // at most one greater.
     let estimate = ((19 &* (127 &- (c|1).leadingZeroBitCount)) &>> 6) &+ 1
     let n = min(e, UInt(max(0, 33 &- estimate)))
     if n != 0 {
-      c &*= UInt128._exp10(Int(n))
+      c &*= unsafe ._exp10[unchecked: Int(n)]
       e &-= n
     }
-    if e != 0 && c <= 999_999_999_999_999_999_999_999_999_999_999 {
+    if e != 0 && c < ._1e33 {
       c &*= 10
       e &-= 1
     }
@@ -806,7 +797,7 @@ extension Decimal128: Comparable {
     if n > 33 { return isSwapped }
     let (lc, rc) = (lhs.significandBitPattern, rhs.significandBitPattern)
     guard lc < rc else { return isSwapped }
-    let scaled = lc.multipliedFullWidth(by: UInt128._exp10(n))
+    let scaled = unsafe lc.multipliedFullWidth(by: ._exp10[unchecked: n])
     return isSwapped ? scaled > (0, rc) : scaled < (0, rc)
   }
 
@@ -837,7 +828,7 @@ extension Decimal128: ExpressibleByIntegerLiteral {
   @inlinable
   public init(integerLiteral value: Int128) {
     bitPattern = value.magnitude
-    guard bitPattern <= 9_999_999_999_999_999_999_999_999_999_999_999 else {
+    guard bitPattern < ._1e34 else {
       fatalError("Potentially inexact integer conversion not implemented")
     }
     bitPattern |= Self().bitPattern
@@ -906,8 +897,9 @@ extension Decimal128: AdditiveArithmetic {
     var e = biasedExponent
     let pe = min(12287, max(0, preferredBiasedExponent ?? e))
     let (hi, lo) = significand
-    assert(!sticky || (hi, lo) >= (0, 10_000_000_000_000_000_000_000_000_000_000_000))
-    // FIXME: Also assert significand has at most 70 decimal digits.
+    assert(!sticky || (hi, lo) >= (0, ._1e34))
+    assert((hi, lo) < UInt128._exp10[35].multipliedFullWidth(by: ._exp10[35]))
+    // TODO: Restore original upper bound of 68 decimal digits.
     if (hi, lo) == (0, 0) {
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: pe) &<< 113)
       return isSignMinus ? -abs : abs
@@ -915,7 +907,7 @@ extension Decimal128: AdditiveArithmetic {
     if e > 12320 {
       return _overflow(isSignMinus: isSignMinus, rule, &flags)
     }
-    if e < -70 {
+    if e < -70 { // TODO: See above TODO.
       let nextAway = _roundsAway(
         isSignMinus: isSignMinus,
         significand: 0,
@@ -928,59 +920,61 @@ extension Decimal128: AdditiveArithmetic {
     }
 
     // Per IEEE 754, detect tininess (i.e., underflow) before rounding.
-    let isTiny: Bool = if e < -36 {
+    let isTiny: Bool = if e < -36 { // TODO: See above TODO.
       true
     } else if e < -5 {
-      hi == 0 || (hi, lo) <
-        UInt128._exp10(-e).multipliedFullWidth(by: 1_000_000_000_000_000_000_000_000_000_000_000)
+      unsafe hi == 0 || (hi, lo) <
+        UInt128._exp10[unchecked: -e].multipliedFullWidth(by: ._1e33)
     } else if e < 33 {
-      hi == 0 && lo < UInt128._exp10(33 &- e)
+      unsafe hi == 0 && lo < ._exp10[unchecked: 33 &- e]
     } else {
       false
     }
 
     // Remove decimal digits from intermediate result, if necessary.
-    var pow, quo, rem: UInt128
+    var divisor, quo, rem: UInt128
     var sticky = sticky
     if isTiny {
       if e < -38 {
         let (q, r) = _UInt256(hi, lo)._quotientAndRemainderDividingBy1e38()
         if r.low != 0 { sticky = true }
-        pow = UInt128._exp10(-e &- 38)
-        (quo, rem) = q.low.quotientAndRemainder(dividingBy: pow) // TODO: Fast path.
+        let n = -e &- 38
+        divisor = ._exp10[n]
+        (quo, rem) = q.low._quotientAndRemainder(dividingBy1e: n)
         e = 0
       } else if e < 0 {
-        pow = UInt128._exp10(-e)
-        (quo, rem) = pow.dividingFullWidth((hi, lo)) // TODO: Fast path.
+        let n = -e
+        divisor = unsafe ._exp10[unchecked: n]
+        (quo, rem) =
+          UInt128._quotientAndRemainder(fullWidth: (hi, lo), dividingBy1e: n)
         e = 0
       } else {
-        pow = 1
+        divisor = 1
         (quo, rem) = (lo, 0)
       }
     } else if hi != 0 {
       // See explanatory comment in `UInt128._commonLogarithm`.
       // Note that here we underestimate.
       var n = ((77 &* (255 &- hi.leadingZeroBitCount)) &>> 8) &- 33
-      pow = UInt128._exp10(n)
-      if (hi, lo) >= pow.multipliedFullWidth(by: 10_000_000_000_000_000_000_000_000_000_000_000) {
+      divisor = unsafe ._exp10[unchecked: n]
+      if (hi, lo) >= divisor.multipliedFullWidth(by: ._1e34) {
         n &+= 1
-        pow &*= 10
+        divisor &*= 10
       }
-      (quo, rem) = pow.dividingFullWidth((hi, lo))
+      (quo, rem) = divisor.dividingFullWidth((hi, lo))
       e &+= n
-    } else if lo >= 10_000_000_000_000_000_000_000_000_000_000_000 {
+    } else if lo >= ._1e34 {
       var n = ((77 &* (127 &- (lo|1).leadingZeroBitCount)) &>> 8) &- 33
-      pow = UInt128._exp10(n)
-      let (x, overflow) =
-        pow.multipliedReportingOverflow(by: 10_000_000_000_000_000_000_000_000_000_000_000)
+      divisor = unsafe ._exp10[unchecked: n]
+      let (x, overflow) = divisor.multipliedReportingOverflow(by: ._1e34)
       if !overflow && lo >= x {
         n &+= 1
-        pow &*= 10
+        divisor &*= 10
       }
-      (quo, rem) = lo.quotientAndRemainder(dividingBy: pow)
+      (quo, rem) = lo._quotientAndRemainder(dividingBy1e: n)
       e &+= n
     } else {
-      pow = 1
+      divisor = 1
       (quo, rem) = (lo, 0)
     }
 
@@ -988,19 +982,50 @@ extension Decimal128: AdditiveArithmetic {
     if !inexact {
       // Select exact cohort before checking for overflow.
       if e < pe {
-        while e < pe && quo % 10 == 0 { // TODO: Optimize this divisibility test.
-          quo /= 10
-          e &+= 1
+        if (quo & 1) == 0, let quo_ = quo._quotientIfExactDividingBy10() {
+          var delta = pe &- (e &+ 1)
+          quo = quo_
+          if delta <= 32 && (quo & 0xFFFFFFFF) == 0,
+              let quo_ = quo._quotientIfExactDividingBy1e32() {
+            delta &-= 32
+            quo = quo_
+          }
+          if delta <= 16 && (quo & 0xFFFF) == 0,
+              let quo_ = quo._quotientIfExactDividingBy1e16() {
+            delta &-= 16
+            quo = quo_
+          }
+          if delta <= 8 && (quo & 0xFF) == 0,
+              let quo_ = quo._quotientIfExactDividingBy1e8() {
+            delta &-= 8
+            quo = quo_
+          }
+          if delta <= 4 && (quo & 0xF) == 0,
+              let quo_ = quo._quotientIfExactDividingBy10000() {
+            delta &-= 4
+            quo = quo_
+          }
+          if delta <= 2 && (quo & 0x3) == 0,
+              let quo_ = quo._quotientIfExactDividingBy100() {
+            delta &-= 2
+            quo = quo_
+          }
+          if delta <= 1 && (quo & 1) == 0,
+              let quo_ = quo._quotientIfExactDividingBy10() {
+            delta &-= 1
+            quo = quo_
+          }
+          e = pe &- delta
         }
       } else if e > pe {
         let estimate = ((19 &* (127 &- quo.leadingZeroBitCount)) &>> 6) &+ 1
         let n = min(e &- pe, max(0, 33 &- estimate))
         if n > 0 {
-          quo *= UInt128._exp10(n)
+          quo &*= unsafe ._exp10[unchecked: n]
           e &-= n
         }
-        if e > pe && quo < 1_000_000_000_000_000_000_000_000_000_000_000 {
-          quo *= 10
+        if e > pe && quo < ._1e33 {
+          quo &*= 10
           e &-= 1
         }
       }
@@ -1023,9 +1048,9 @@ extension Decimal128: AdditiveArithmetic {
       case .down:
         isSignMinus
       case .toNearestOrAwayFromZero:
-        rem >= (pow &>> 1)
+        rem >= (divisor &>> 1)
       case .toNearestOrEven:
-        rem > (pow &>> 1) || (rem == (pow &>> 1) && (sticky || (quo & 1) != 0))
+        rem > (divisor &>> 1) || (rem == (divisor &>> 1) && (sticky || (quo & 1) != 0))
       case .towardZero:
         false
       case .up:
@@ -1034,12 +1059,12 @@ extension Decimal128: AdditiveArithmetic {
         fatalError("Unknown rounding rule.")
       }
     if nextAway {
-      if quo == 9_999_999_999_999_999_999_999_999_999_999_999 {
+      if quo == ._1e34 &- 1 {
         if e == 12287 {
           flags.formUnion(.overflowInexact)
           return isSignMinus ? -.infinity : .infinity
         }
-        quo = 1_000_000_000_000_000_000_000_000_000_000_000
+        quo = ._1e33
         e &+= 1
       } else {
         quo &+= 1
@@ -1128,16 +1153,16 @@ extension Decimal128: AdditiveArithmetic {
       let e2 = rhs.exponentBitPattern
       guard e1 > e2 else { return lhs }
       var c1 = lhs.significandBitPattern
-      // Estimate log10(c). See `UInt128._log10` for a detailed explanation.
+      // Estimate log10(c). See `UInt128._commonLogarithm` for more explanation.
       // It is important that this estimate be at least the true floor log10 and
       // at most one greater.
       let estimate = ((19 &* (127 &- (c1|1).leadingZeroBitCount)) &>> 6) &+ 1
       let n = min(e1 &- e2, UInt(max(0, 33 &- estimate)))
       if n > 0 {
-        c1 &*= UInt128._exp10(Int(n))
+        c1 &*= unsafe ._exp10[unchecked: Int(n)]
         e1 &-= n
       }
-      if e1 > e2 && c1 <= 999_999_999_999_999_999_999_999_999_999_999 {
+      if e1 > e2 && c1 < ._1e33 {
         c1 &*= 10
         e1 &-= 1
       }
@@ -1157,7 +1182,9 @@ extension Decimal128: AdditiveArithmetic {
     var c1 = lhs.significandBitPattern
     let logc1 = c1._commonLogarithm
     let c2 = rhs.significandBitPattern
-    if n &+ (logc1 &- c2._commonLogarithm) > 35 {
+    let logc2 = c2._commonLogarithm
+    let delta = n &+ (logc1 &- logc2)
+    if delta > 34 {
       // Inexact.
       var isTiny = false
       if logc1 < 33 {
@@ -1165,52 +1192,65 @@ extension Decimal128: AdditiveArithmetic {
         if e1 < n_ {
           // Note that the result isn't tiny if `e1 == n_`.
           isTiny = true
-          c1 &*= UInt128._exp10(Int(e1))
+          c1 &*= unsafe ._exp10[unchecked: Int(e1)]
           e1 = 0
         } else {
-          c1 &*= UInt128._exp10(Int(n_))
+          c1 &*= unsafe ._exp10[unchecked: Int(n_)]
           e1 &-= n_
         }
       }
       if isSignMinus == rhs._isSignMinus {
-        let nextAway: Bool = switch rule {
-        case .awayFromZero:            true
-        case .down:                    isSignMinus
-        case .toNearestOrAwayFromZero: false
-        case .toNearestOrEven:         false
-        case .towardZero:              false
-        case .up:                      !isSignMinus
-        @unknown default:              fatalError("Unknown rounding rule.")
-        }
+        let nextAway: Bool =
+          switch rule {
+          case .awayFromZero:
+            true
+          case .down:
+            isSignMinus
+          case .toNearestOrAwayFromZero, .toNearestOrEven:
+            false
+          case .towardZero:
+            false
+          case .up:
+            !isSignMinus
+          @unknown default:
+            fatalError("Unknown rounding rule.")
+          }
         if nextAway {
-          if c1 == 9_999_999_999_999_999_999_999_999_999_999_999 {
+          if c1 == ._1e34 &- 1 {
             if e1 == 12287 {
               flags.formUnion(.overflowInexact)
               return isSignMinus ? -.infinity : .infinity
             }
-            c1 = 1_000_000_000_000_000_000_000_000_000_000_000
+            c1 = ._1e33
             e1 &+= 1
           } else {
             c1 &+= 1
           }
         }
       } else {
-        let nextToward: Bool = switch rule {
-        case .awayFromZero:            false
-        case .down:                    !isSignMinus
-        case .toNearestOrAwayFromZero: false
-        case .toNearestOrEven:         false
-        case .towardZero:              true
-        case .up:                      isSignMinus
-        @unknown default:              fatalError("Unknown rounding rule.")
-        }
+        let nextToward: Bool =
+          switch rule {
+          case .awayFromZero:
+            false
+          case .down:
+            !isSignMinus
+          case .toNearestOrAwayFromZero, .toNearestOrEven:
+            unsafe delta == 35 &&
+              c1 == ._1e33 && c2 > 5 &* ._exp10[unchecked: logc2]
+          case .towardZero:
+            true
+          case .up:
+            isSignMinus
+          @unknown default:
+            fatalError("Unknown rounding rule.")
+          }
         if nextToward {
-          if c1 == 1_000_000_000_000_000_000_000_000_000_000_000 {
+          if c1 == ._1e33 {
             if e1 == 0 {
               isTiny = true
               c1 &-= 1
             } else {
-              c1 = 9_999_999_999_999_999_999_999_999_999_999_999
+              c1 = ._1e34 &- 1
               e1 &-= 1
             }
           } else {
@@ -1231,9 +1271,8 @@ extension Decimal128: AdditiveArithmetic {
     var (hi, lo) = n == 0
       ? (0, c1)
       : n <= 38
-        ? c1.multipliedFullWidth(by: UInt128._exp10(n))
-        : (c1 * UInt128._exp10(n &- 34))
-          .multipliedFullWidth(by: 10_000_000_000_000_000_000_000_000_000_000_000)
+        ? unsafe c1.multipliedFullWidth(by: ._exp10[unchecked: n])
+        : (c1 * ._exp10[n &- 34]).multipliedFullWidth(by: ._1e34)
     if isSignMinus == rhs._isSignMinus {
       let carry: Bool
       (lo, carry) = lo.addingReportingOverflow(c2)
@@ -1486,8 +1525,7 @@ extension Decimal128: Numeric {
   @inlinable
   public init?<T: BinaryInteger>(exactly source: T) {
     let magnitude = source.magnitude
-    let max = 9_999_999_999_999_999_999_999_999_999_999_999 as UInt128
-    guard magnitude.bitWidth < 113 || magnitude <= max else {
+    guard magnitude.bitWidth < 113 || magnitude < UInt128._1e34 else {
       fatalError("Potentially inexact integer conversion not implemented")
     }
     bitPattern = UInt128(truncatingIfNeeded: magnitude)
@@ -1910,7 +1948,7 @@ extension Decimal128: CustomStringConvertible {
       var index: Int
 
       if _isSignMinus {
-        buffer.initializeElement(at: 0, to: 45 /* '-' */)
+        unsafe buffer.initializeElement(at: 0, to: 45 /* '-' */)
         index = 1
       } else {
         index = 0
@@ -1930,45 +1968,47 @@ extension Decimal128: CustomStringConvertible {
       if exponent >= 0 && exponent < min(count, 16) {
         let x = exponent + 1
         string.withUTF8 {
-          index = buffer[index...].initialize(fromContentsOf: $0[..<x])
-          buffer.initializeElement(at: index, to: 46 /* '.' */)
+          index = unsafe buffer[index...].initialize(fromContentsOf: $0[..<x])
+          unsafe buffer.initializeElement(at: index, to: 46 /* '.' */)
           if x == count {
             index += 1
           } else {
-            index = buffer[(index + 1)...].initialize(fromContentsOf: $0[x...])
+            index =
+              unsafe buffer[(index + 1)...].initialize(fromContentsOf: $0[x...])
           }
         }
         return index
       }
 
       if exponent < 0 && exponent >= -4 {
-        buffer.initializeElement(at: index, to: 48 /* '0' */)
-        buffer.initializeElement(at: index + 1, to: 46 /* '.' */)
+        unsafe buffer.initializeElement(at: index, to: 48 /* '0' */)
+        unsafe buffer.initializeElement(at: index + 1, to: 46 /* '.' */)
         index =
-          buffer[(index + 2)...].initialize(
+          unsafe buffer[(index + 2)...].initialize(
             fromContentsOf: repeatElement(48 /* '0' */, count: -(exponent + 1)))
         string.withUTF8 {
-          index = buffer[index...].initialize(fromContentsOf: $0)
+          index = unsafe buffer[index...].initialize(fromContentsOf: $0)
         }
         return index
       }
 
       string.withUTF8 {
-        buffer.initializeElement(at: index, to: $0[0])
+        unsafe buffer.initializeElement(at: index, to: $0[0])
         if count == 1 {
           index += 1
         } else {
-          buffer.initializeElement(at: index + 1, to: 46 /* '.' */)
-          index = buffer[(index + 2)...].initialize(fromContentsOf: $0[1...])
+          unsafe buffer.initializeElement(at: index + 1, to: 46 /* '.' */)
+          index =
+            unsafe buffer[(index + 2)...].initialize(fromContentsOf: $0[1...])
         }
       }
-      buffer.initializeElement(at: index, to: 101 /* 'e' */)
-      buffer.initializeElement(
+      unsafe buffer.initializeElement(at: index, to: 101 /* 'e' */)
+      unsafe buffer.initializeElement(
         at: index + 1,
         to: exponent < 0 ? 45 /* '-' */ : 43 /* '+' */)
       string = String(abs(exponent))
       string.withUTF8 {
-        index = buffer[(index + 2)...].initialize(fromContentsOf: $0)
+        index = unsafe buffer[(index + 2)...].initialize(fromContentsOf: $0)
       }
       return index
     }

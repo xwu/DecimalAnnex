@@ -560,17 +560,6 @@ extension _UInt256 {
   }
 
   @inlinable
-  internal func _quotientAndRemainderDividingBy1e6()
-  -> (quotient: Self, remainder: Self) {
-    let m = Self(
-      0x8637BD05AF6C69B5A63F9A49C2C1B10F,
-      0xD7E45803CD141A6937D1FE64F54D1E97)
-    let q = multipliedFullWidth(by: m).high &>> 19
-    let r = self &- q &* 1_000_000
-    return (q, r)
-  }
-
-  @inlinable
   internal func _quotientAndRemainderDividingBy1e38()
   -> (quotient: Self, remainder: Self) {
     let m = Self(0x3671F73B54F1C89565B9EF4, 0xD632412884B32926857A281A0E6A841B)
