@@ -29,7 +29,7 @@ final class DecimalAnnexTests: XCTestCase {
 
   func testUInt256() throws {
     guard #available(
-      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+      anyAppleOS 26.0, *
     ) else { return }
     do {
       XCTAssertEqual(
@@ -71,7 +71,7 @@ final class DecimalAnnexTests: XCTestCase {
 
   func testLog10() throws {
     guard #available(
-      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+      anyAppleOS 26.0, *
     ) else { return }
 
     for _ in 0...65535 {
@@ -82,7 +82,7 @@ final class DecimalAnnexTests: XCTestCase {
 
   func testPi() throws {
     guard #available(
-      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+      anyAppleOS 26.0, *
     ) else { return }
 
     let x = Decimal128.pi
@@ -93,7 +93,7 @@ final class DecimalAnnexTests: XCTestCase {
 
   func testEquatable() throws {
     guard #available(
-      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+      anyAppleOS 26.0, *
     ) else { return }
 
     let x = Decimal128(
@@ -111,7 +111,7 @@ final class DecimalAnnexTests: XCTestCase {
 
   func testAddingZero() throws {
     guard #available(
-      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+      anyAppleOS 26.0, *
     ) else { return }
 
     let x = Decimal128(
@@ -129,7 +129,7 @@ final class DecimalAnnexTests: XCTestCase {
 
   func testIntegerLiteral() throws {
     guard #available(
-      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+      anyAppleOS 26.0, *
     ) else { return }
 
     let x = 0 as Decimal128
@@ -138,7 +138,7 @@ final class DecimalAnnexTests: XCTestCase {
 
   func testAddition() throws {
     guard #available(
-      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+      anyAppleOS 26.0, *
     ) else { return }
 
     for i in 0..<256 {
@@ -152,7 +152,7 @@ final class DecimalAnnexTests: XCTestCase {
 
   func testMultiplication() throws {
     guard #available(
-      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+      anyAppleOS 26.0, *
     ) else { return }
 
     for i in 0..<256 {
@@ -166,7 +166,7 @@ final class DecimalAnnexTests: XCTestCase {
 
   func testDescription() throws {
     guard #available(
-      macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *
+      anyAppleOS 26.0, *
     ) else { return }
 
     // As a concession to the idiosyncrasies of float literals, we will write

@@ -1,5 +1,5 @@
 /// A 128-bit decimal floating-point value type.
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 @frozen
 public struct Decimal128: BitwiseCopyable, Sendable {
   /// The bit pattern of the value’s binary encoding.
@@ -21,7 +21,7 @@ public struct Decimal128: BitwiseCopyable, Sendable {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128 {
   @inlinable
   public var sign: FloatingPointSign {
@@ -59,7 +59,7 @@ extension Decimal128 {
 }
 
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128 {
 #if false
   /// A type that represents the encoded exponent of a value.
@@ -170,7 +170,7 @@ extension Decimal128 {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128 {
   @inlinable
   public static var nan: Decimal128 {
@@ -367,7 +367,7 @@ extension Decimal128 {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128 {
   public var nextUp: Decimal128 {
     guard _isFiniteNonzero else {
@@ -643,7 +643,7 @@ extension Decimal128 {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128: Equatable {
   @inlinable
   public static func == (lhs: Decimal128, rhs: Decimal128) -> Bool {
@@ -695,7 +695,7 @@ extension Decimal128: Equatable {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128: Hashable {
   /// Returns the result of adding +0 to the value using the default rounding
   /// mode and without signaling any floating-point exceptions.
@@ -751,7 +751,7 @@ extension Decimal128: Hashable {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128: Comparable {
   @inlinable
   public static func < (lhs: Decimal128, rhs: Decimal128) -> Bool {
@@ -832,7 +832,7 @@ extension Decimal128: Comparable {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128: ExpressibleByIntegerLiteral {
   @inlinable
   public init(integerLiteral value: Int128) {
@@ -845,7 +845,7 @@ extension Decimal128: ExpressibleByIntegerLiteral {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128: AdditiveArithmetic {
   @inlinable
   @inline(always)
@@ -1378,7 +1378,7 @@ extension Decimal128: AdditiveArithmetic {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128: Numeric {
   /// Returns the result of multiplying this value by the given value,
   /// rounding to a representable value if needed with the given rounding rule.
@@ -1496,10 +1496,10 @@ extension Decimal128: Numeric {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128: SignedNumeric { }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128: Strideable {
   @inlinable
   public func distance(to other: Decimal128) -> Decimal128 { other - self }
@@ -1508,7 +1508,7 @@ extension Decimal128: Strideable {
   public func advanced(by n: Decimal128) -> Decimal128 { self + n }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128 {
   public init<T: BinaryInteger>(_ source: T) {
     fatalError("Not implemented")
@@ -1569,7 +1569,7 @@ extension Decimal128 {
   // TODO: Conversion from `Decimal128` to binary integer or floating point.
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128: FloatingPoint {
   @inlinable
   public static var radix: Int { 10 }
@@ -1696,7 +1696,7 @@ extension Decimal128: FloatingPoint {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128 {
   /// The bit pattern of the value’s binary encoding.
   ///
@@ -1870,7 +1870,7 @@ extension Decimal128 {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128: Codable {
   public func encode(to encoder: any Encoder) throws {
     var container = encoder.singleValueContainer()
@@ -1883,7 +1883,7 @@ extension Decimal128: Codable {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128: CustomStringConvertible {
   public var description: String {
     guard _isFiniteNonzero else {
@@ -1975,7 +1975,7 @@ extension Decimal128: CustomStringConvertible {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension Decimal128: LosslessStringConvertible {
   public init?<T: StringProtocol>(_ description: T) {
     fatalError("Not implemented")

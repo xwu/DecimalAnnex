@@ -3,7 +3,7 @@
 // Copyright (c) 2017-2024 Apple Inc. and the Swift project authors.
 // Licensed under Apache License v2.0 with Runtime Library Exception.
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 @frozen
 public struct _UInt256: Sendable {
   @usableFromInline
@@ -20,7 +20,7 @@ public struct _UInt256: Sendable {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension _UInt256 {
   @_transparent
   public var high: UInt128 { _storage.high }
@@ -34,7 +34,7 @@ extension _UInt256 {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension _UInt256: ExpressibleByIntegerLiteral {
   @_transparent
   public init(integerLiteral x: UInt128) {
@@ -42,7 +42,7 @@ extension _UInt256: ExpressibleByIntegerLiteral {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension _UInt256: CustomStringConvertible {
   @_transparent
   @usableFromInline
@@ -82,13 +82,13 @@ extension _UInt256: CustomStringConvertible {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension _UInt256: CustomDebugStringConvertible {
   @inlinable
   public var debugDescription: String { "(\(high), \(low))" }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension _UInt256: Equatable {
   @_transparent
   public static func == (lhs: Self, rhs: Self) -> Bool {
@@ -96,7 +96,7 @@ extension _UInt256: Equatable {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension _UInt256: Hashable {
   @inlinable
   public func hash(into hasher: inout Hasher) {
@@ -105,7 +105,7 @@ extension _UInt256: Hashable {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension _UInt256: Comparable {
   @_transparent
   public static func < (lhs: Self, rhs: Self) -> Bool {
@@ -113,7 +113,7 @@ extension _UInt256: Comparable {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension _UInt256: Numeric {
   @_transparent
   public var magnitude: Self { self }
@@ -140,7 +140,7 @@ extension _UInt256: Numeric {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension _UInt256 {
   @frozen
   public struct Words: Sendable {
@@ -155,7 +155,7 @@ extension _UInt256 {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension _UInt256.Words: RandomAccessCollection {
   @_transparent
   public var startIndex: Int { 0 }
@@ -176,7 +176,7 @@ extension _UInt256.Words: RandomAccessCollection {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension _UInt256: FixedWidthInteger {
   @_transparent
   public static var bitWidth: Int { 256 }
@@ -513,10 +513,10 @@ extension _UInt256: FixedWidthInteger {
   }
 }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension _UInt256: UnsignedInteger { }
 
-@available(macOS 15.0, iOS 18.0, watchOS 11.0, tvOS 18.0, visionOS 2.0, *)
+@available(anyAppleOS 26.0, *)
 extension _UInt256 {
   @inlinable
   internal var _commonLogarithm: Int {
