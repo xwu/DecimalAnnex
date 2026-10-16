@@ -1054,32 +1054,32 @@ extension Decimal128: AdditiveArithmetic {
         if (quo & 1) == 0, let quo_ = quo._quotientIfExactDividingBy10() {
           var delta = pe &- (e &+ 1)
           quo = quo_
-          if delta <= 32 && (quo & 0xFFFFFFFF) == 0,
+          if delta >= 32 && (quo & 0xFFFFFFFF) == 0,
               let quo_ = quo._quotientIfExactDividingBy1e32() {
             delta &-= 32
             quo = quo_
           }
-          if delta <= 16 && (quo & 0xFFFF) == 0,
+          if delta >= 16 && (quo & 0xFFFF) == 0,
               let quo_ = quo._quotientIfExactDividingBy1e16() {
             delta &-= 16
             quo = quo_
           }
-          if delta <= 8 && (quo & 0xFF) == 0,
+          if delta >= 8 && (quo & 0xFF) == 0,
               let quo_ = quo._quotientIfExactDividingBy1e8() {
             delta &-= 8
             quo = quo_
           }
-          if delta <= 4 && (quo & 0xF) == 0,
+          if delta >= 4 && (quo & 0xF) == 0,
               let quo_ = quo._quotientIfExactDividingBy10000() {
             delta &-= 4
             quo = quo_
           }
-          if delta <= 2 && (quo & 0x3) == 0,
+          if delta >= 2 && (quo & 0x3) == 0,
               let quo_ = quo._quotientIfExactDividingBy100() {
             delta &-= 2
             quo = quo_
           }
-          if delta <= 1 && (quo & 1) == 0,
+          if delta >= 1 && (quo & 1) == 0,
               let quo_ = quo._quotientIfExactDividingBy10() {
             delta &-= 1
             quo = quo_
@@ -1530,7 +1530,8 @@ extension Decimal128: Numeric {
       }
 
       let e = Int(lhs.exponentBitPattern) &- 6176 &+ Int(rhs.exponentBitPattern)
-      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: max(e, 0)) &<< 113)
+      let abs = Self(
+        bitPattern: UInt128(truncatingIfNeeded: min(12287, max(e, 0))) &<< 113)
       return isSignMinus ? -abs : abs
     }
 
