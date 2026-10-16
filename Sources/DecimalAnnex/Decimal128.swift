@@ -742,8 +742,77 @@ extension Decimal128: Hashable {
   }
 }
 
+@usableFromInline
+@frozen
+@c
+internal enum _WeakOrdering: Int8 {
+  case less = -1
+  case equivalent = 0
+  case greater = 1
+}
+
 @available(anyAppleOS 26.0, *)
 extension Decimal128: Comparable {
+  @inlinable
+  internal func _compared(to other: Decimal128) -> _WeakOrdering? {
+    var lhs = self, rhs = other
+    if lhs.bitPattern == rhs.bitPattern {
+      if lhs.isNaN { return nil }
+      return .equivalent
+    }
+
+    guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
+      if lhs.isNaN || rhs.isNaN { return nil }
+      if lhs.isInfinite {
+        return lhs._isSignMinus
+          ? rhs.isInfinite && rhs._isSignMinus ? .equivalent : .less
+          : rhs.isInfinite && !rhs._isSignMinus ? .equivalent : .greater
+      }
+      if rhs.isInfinite {
+        return rhs._isSignMinus ? .greater : .less
+      }
+      if lhs.isZero {
+        if rhs.isZero { return .equivalent }
+        return rhs._isSignMinus ? .greater : .less
+      }
+      return lhs._isSignMinus ? .less : .greater
+    }
+
+    if lhs._isSignMinus {
+      if !rhs._isSignMinus { return .less }
+      // For explanation, see `<`.
+      swap(&lhs, &rhs)
+    } else if rhs._isSignMinus {
+      return .greater
+    }
+
+    var n = Int(lhs.exponentBitPattern) - Int(rhs.exponentBitPattern)
+    if n == 0 {
+      // Equivalent finite nonzero values with the same exponent bit pattern
+      // must have the same overall bit pattern, in which case we've already
+      // taken the early exit above.
+      return lhs.significandBitPattern < rhs.significandBitPattern
+        ? .less
+        : .greater
+    }
+    var isSwapped = false
+    if n < 0 {
+      // For explanation, see `<`.
+      swap(&lhs, &rhs)
+      isSwapped = true
+      n.negate()
+    }
+
+    if n > 33 { return isSwapped ? .less : .greater }
+    let (lc, rc) = (lhs.significandBitPattern, rhs.significandBitPattern)
+    guard lc < rc else { return isSwapped ? .less : .greater }
+    let scaled = unsafe lc.multipliedFullWidth(by: ._exp10[unchecked: n])
+    if scaled == (0, rc) { return .equivalent }
+    return isSwapped
+      ? scaled > (0, rc) ? .less : .greater
+      : scaled < (0, rc) ? .less : .greater
+  }
+
   @inlinable
   public static func < (lhs: Decimal128, rhs: Decimal128) -> Bool {
     if lhs.bitPattern == rhs.bitPattern {
@@ -1610,19 +1679,46 @@ extension Decimal128 {
 @available(anyAppleOS 26.0, *)
 extension Decimal128: FloatingPoint {
   @inlinable
+  @inline(always)
   public static var radix: Int { 10 }
 
-  @_transparent
+  @inlinable
+  @inline(always)
   public func isEqual(to other: Decimal128) -> Bool { self == other }
 
-  @_transparent
+  @inlinable
+  @inline(always)
   public func isLess(than other: Decimal128) -> Bool { self < other }
 
-  @_transparent
+  @inlinable
+  @inline(always)
   public func isLessThanOrEqualTo(_ other: Decimal128) -> Bool { self <= other }
 
+  @inlinable
   public func isTotallyOrdered(belowOrEqualTo other: Decimal128) -> Bool {
-    fatalError("Not implemented")
+    let cmp = _compared(to: other)
+    switch cmp {
+    case .less: return true
+    case .greater: return false
+    default: break
+    }
+    // `self` and `other` are equal or unordered.
+    let lhs: Self, rhs: Self
+    if _isSignMinus {
+      if !other._isSignMinus { return true }
+      (lhs, rhs) = (other._canonical, _canonical) // Swap to compare magnitudes.
+    } else if other._isSignMinus {
+      return false
+    } else {
+      (lhs, rhs) = (_canonical, other._canonical)
+    }
+    // `self` and `other` have matching sign bits.
+    let (le, re) = (lhs.exponentBitPattern, rhs.exponentBitPattern)
+    guard cmp == nil else { return le <= re }
+    // Look at exponents, but order +sNaN before +qNaN (and -qNaN before -sNaN).
+    if le > re { return le == 0x3c00 && re == 0x3800 }
+    if le < re { return le != 0x3800 || re != 0x3c00 }
+    return lhs.significandBitPattern <= rhs.significandBitPattern
   }
 
   public func addingProduct(
