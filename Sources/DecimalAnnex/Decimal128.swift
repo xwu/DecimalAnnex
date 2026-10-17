@@ -1340,7 +1340,7 @@ extension Decimal128: AdditiveArithmetic {
     var (hi, lo) = n == 0
       ? (0, c1)
       : n <= 38
-        ? unsafe c1.multipliedFullWidth(by: ._exp10[unchecked: n])
+        ? c1._multipliedFullWidth(by1e: n)
         : (c1 * ._exp10[n &- 34]).multipliedFullWidth(by: ._1e34)
     if isSignMinus == rhs._isSignMinus {
       let carry: Bool
@@ -1434,12 +1434,22 @@ extension Decimal128: AdditiveArithmetic {
   ///   - rhs: The value to subtract from this value.
   ///   - rule: The rounding rule to use for computing an inexact result.
   @inlinable
-  @inline(__always)
+  @inline(always)
   public func subtracting(
     _ rhs: Decimal128,
     rounding rule: FloatingPointRoundingRule = .toNearestOrEven
   ) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
+    return adding(-rhs, rounding: rule, &flags)
+  }
+
+  @inlinable
+  @inline(always)
+  public func subtracting(
+    _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
     return adding(-rhs, rounding: rule, &flags)
   }
 
@@ -1456,6 +1466,16 @@ extension Decimal128: AdditiveArithmetic {
     rounding rule: FloatingPointRoundingRule = .toNearestOrEven
   ) {
     self = subtracting(rhs, rounding: rule)
+  }
+
+  @inlinable
+  @inline(always)
+  public mutating func subtract(
+    _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = subtracting(rhs, rounding: rule, &flags)
   }
 
   /// Subtracts one value from another and produces their difference,
@@ -1498,19 +1518,32 @@ extension Decimal128: Numeric {
   ///   - rhs: The value by which to multiply this value.
   ///   - rule: The rounding rule to use for computing an inexact result.
   @inlinable
+  @inline(always)
   public func multiplied(
     by rhs: Decimal128,
     rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) -> Decimal128 {
+    var flags: DecimalFloatingPointStatusFlags = []
+    return multiplied(by: rhs, rounding: rule, &flags)
+  }
+
+  @inlinable
+  public func multiplied(
+    by rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
+    _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
     let lhs = self
     let isSignMinus = lhs._isSignMinus != rhs._isSignMinus
 
     guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
       if lhs.isSignalingNaN {
-        return _signal(.invalid, default: lhs._quiet._canonical)
+        flags.insert(.invalid)
+        return lhs._quiet._canonical
       }
       if rhs.isSignalingNaN {
-        return _signal(.invalid, default: rhs._quiet._canonical)
+        flags.insert(.invalid)
+        return rhs._quiet._canonical
       }
 
       if lhs.isNaN {
@@ -1521,11 +1554,17 @@ extension Decimal128: Numeric {
       }
 
       if lhs.isInfinite {
-        if rhs.isZero { return _signal(.invalid, default: .nan) }
+        if rhs.isZero {
+          flags.insert(.invalid)
+          return .nan
+        }
         return isSignMinus ? -.infinity : .infinity
       }
       if rhs.isInfinite {
-        if lhs.isZero { return _signal(.invalid, default: .nan) }
+        if lhs.isZero {
+          flags.insert(.invalid)
+          return .nan
+        }
         return isSignMinus ? -.infinity : .infinity
       }
 
@@ -1537,15 +1576,27 @@ extension Decimal128: Numeric {
 
     // Compute the intermediate result.
     let e = Int(lhs.exponentBitPattern) &- 6176 &+ Int(rhs.exponentBitPattern)
-    let (hi, lo) =
-      lhs.significandBitPattern.multipliedFullWidth(
-        by: rhs.significandBitPattern)
+    let lc = lhs.significandBitPattern
+    let rc = rhs.significandBitPattern
+    let product: (high: UInt128, low: UInt128)
+    if lc <= 0xFFFF_FFFF_FFFF_FFFF && rc <= 0xFFFF_FFFF_FFFF_FFFF {
+      let (hi, lo) =
+        UInt64(truncatingIfNeeded: lc).multipliedFullWidth(
+          by: UInt64(truncatingIfNeeded: rc))
+      let c = UInt128(hi) &<< 64 | UInt128(lo)
+      if c < ._1e34 && e >= 0 && e <= 12287 {
+        let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | c)
+        return isSignMinus ? -abs : abs
+      }
+      product = (0, c)
+    } else {
+      product = lc.multipliedFullWidth(by: rc)
+    }
 
-    var flags: DecimalFloatingPointStatusFlags = []
     return ._round(
       isSignMinus: isSignMinus,
       biasedExponent: e,
-      significand: (hi, lo),
+      significand: product,
       rule,
       &flags)
   }
@@ -1557,12 +1608,22 @@ extension Decimal128: Numeric {
   ///   - rhs: The value by which to multiply this value.
   ///   - rule: The rounding rule to use for computing an inexact result.
   @inlinable
-  @inline(__always)
+  @inline(always)
   public mutating func multiply(
     by rhs: Decimal128,
     rounding rule: FloatingPointRoundingRule = .toNearestOrEven
   ) {
     self = multiplied(by: rhs, rounding: rule)
+  }
+
+  @inlinable
+  @inline(always)
+  public mutating func multiply(
+    by rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = multiplied(by: rhs, rounding: rule, &flags)
   }
 
   /// Multiplies two values and produces their product,
@@ -1575,7 +1636,7 @@ extension Decimal128: Numeric {
   ///   - lhs: The first value to multiply.
   ///   - rhs: The second value to multiply.
   @inlinable
-  @inline(__always)
+  @inline(always)
   public static func * (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
     lhs.multiplied(by: rhs)
   }
@@ -1587,7 +1648,7 @@ extension Decimal128: Numeric {
   ///   - lhs: The first value to multiply.
   ///   - rhs: The second value to multiply.
   @inlinable
-  @inline(__always)
+  @inline(always)
   public static func *= (lhs: inout Decimal128, rhs: Decimal128) {
     lhs = lhs * rhs
   }
@@ -1752,21 +1813,190 @@ extension Decimal128: FloatingPoint {
     self = addingProduct(lhs, rhs)
   }
 
+  @inlinable
+  @inline(always)
   public func divided(
     by rhs: Decimal128,
     rounding rule: FloatingPointRoundingRule = .toNearestOrEven
   ) -> Decimal128 {
-    fatalError("Not implemented")
+    var flags: DecimalFloatingPointStatusFlags = []
+    return divided(by: rhs, rounding: rule, &flags)
   }
 
   @inlinable
-  @inline(__always)
+  public func divided(
+    by rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    let lhs = self
+    let isSignMinus = lhs._isSignMinus != rhs._isSignMinus
+
+    guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
+      if lhs.isSignalingNaN {
+        flags.insert(.invalid)
+        return lhs._quiet._canonical
+      }
+      if rhs.isSignalingNaN {
+        flags.insert(.invalid)
+        return rhs._quiet._canonical
+      }
+
+      if lhs.isNaN {
+        return lhs._canonical
+      }
+      if rhs.isNaN {
+        return rhs._canonical
+      }
+
+      if lhs.isInfinite {
+        if rhs.isInfinite {
+          flags.insert(.invalid)
+          return .nan
+        }
+        return isSignMinus ? -.infinity : .infinity
+      }
+      if rhs.isInfinite {
+        let abs = Self(bitPattern: 0)
+        return isSignMinus ? -abs : abs
+      }
+
+      if rhs.isZero {
+        if lhs.isZero {
+          flags.insert(.invalid)
+          return .nan
+        }
+        flags.insert(.divisionByZero)
+        return isSignMinus ? -.infinity : .infinity
+      }
+      let e = Int(lhs.exponentBitPattern) &- Int(rhs.exponentBitPattern) &+ 6176
+      let abs = Self(
+        bitPattern: UInt128(truncatingIfNeeded: min(12287, max(e, 0))) &<< 113)
+      return isSignMinus ? -abs : abs
+    }
+
+    var e = Int(lhs.exponentBitPattern) &- Int(rhs.exponentBitPattern) &+ 6176
+    let lc = lhs.significandBitPattern
+    let rc = rhs.significandBitPattern
+
+    if rc == 1 {
+      if e >= 0 && e <= 12287 {
+        let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | lc)
+        return isSignMinus ? -abs : abs
+      }
+      return ._round(
+        isSignMinus: isSignMinus,
+        biasedExponent: e,
+        significand: (0, lc), // TODO: Does this really require the general rounder?
+        rule,
+        &flags)
+    }
+
+    let n: Int
+    var quo: UInt128
+    let rem: UInt128
+    if lc >= rc {
+      let (q, r) = lc.quotientAndRemainder(dividingBy: rc)
+      if r == 0 {
+        if e >= 0 && e <= 12287 {
+          let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | q)
+          return isSignMinus ? -abs : abs
+        }
+        return ._round(
+          isSignMinus: isSignMinus,
+          biasedExponent: e,
+          significand: (0, q), // TODO: Does this really require the general rounder?
+          rule,
+          &flags)
+      }
+      n = 33 &- q._commonLogarithm
+      (quo, rem) = rc.dividingFullWidth(r._multipliedFullWidth(by1e: n))
+      quo &+= unsafe q &* ._exp10[unchecked: n]
+    } else {
+      let delta = rc._commonLogarithm &- lc._commonLogarithm
+      n = unsafe 33 &+ delta &+ (lc &* ._exp10[unchecked: delta] < rc ? 1 : 0)
+      let dividend = n <= 38
+        ? lc._multipliedFullWidth(by1e: n)
+        : (lc * ._exp10[n &- 34]).multipliedFullWidth(by: ._1e34)
+      (quo, rem) = rc.dividingFullWidth(dividend)
+    }
+    let pe = e // Hang on to the preferred exponent for later.
+    e &-= n
+
+    let rr = rem &<< 1 // `rem * 2`.
+    if rem != 0 && e >= 0 && e <= 12287 {
+      if Self._roundsAway(
+        isSignMinus: isSignMinus,
+        significand: quo,
+        digit: rr >= rc ? 5 : 0,
+        // A proxy guard digit (5 if midpoint or above; otherwise 0).
+        sticky: rr != rc,
+        rule
+      ) {
+        if quo == ._1e34 &- 1 {
+          if e == 12287 {
+            flags.formUnion(.overflowInexact)
+            return isSignMinus ? -.infinity : .infinity
+          }
+          quo = ._1e33
+          e &+= 1
+        } else {
+          quo &+= 1
+        }
+      }
+      flags.insert(.inexact)
+      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | quo)
+      return isSignMinus ? -abs : abs
+    }
+    if rem == 0 {
+      return ._round(
+        isSignMinus: isSignMinus,
+        biasedExponent: e,
+        significand: (0, quo), // TODO: Does this really require the general rounder?
+        preferredBiasedExponent: pe,
+        rule,
+        &flags)
+    }
+    return ._round(
+      isSignMinus: isSignMinus,
+      biasedExponent: e &- 1,
+      significand: (0, quo &* 10 &+ (rr >= rc ? 5 : 0)),
+      // Tack on a proxy guard digit (5 if midpoint or above; otherwise 0).
+      // TODO: Using integer multiplication to pass in a guard digit is inelegant.
+      // ...Perhaps restore passing a tail or round bit?
+      sticky: /* rem != 0 && */ rr != rc,
+      preferredBiasedExponent: pe,
+      rule,
+      &flags)
+  }
+
+  @inlinable
+  @inline(always)
+  public mutating func divide(
+    by rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+  ) {
+    self = divided(by: rhs, rounding: rule)
+  }
+
+  @inlinable
+  @inline(always)
+  public mutating func divide(
+    by rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = divided(by: rhs, rounding: rule, &flags)
+  }
+
+  @inlinable
+  @inline(always)
   public static func / (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
     lhs.divided(by: rhs)
   }
 
   @inlinable
-  @inline(__always)
+  @inline(always)
   public static func /= (lhs: inout Decimal128, rhs: Decimal128) {
     lhs = lhs / rhs
   }
