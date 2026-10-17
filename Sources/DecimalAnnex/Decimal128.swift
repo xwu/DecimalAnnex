@@ -1033,7 +1033,8 @@ extension Decimal128: AdditiveArithmetic {
         n &+= 1
         divisor &*= 10
       }
-      (quo, rem) = divisor.dividingFullWidth((hi, lo))
+      (quo, rem) =
+        UInt128._quotientAndRemainder(fullWidth: (hi, lo), dividingBy1e: n)
       e &+= n
     } else if lo >= ._1e34 {
       var n = ((77 &* (127 &- (lo|1).leadingZeroBitCount)) &>> 8) &- 33
@@ -1181,13 +1182,12 @@ extension Decimal128: AdditiveArithmetic {
     guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
       if lhs.isSignalingNaN {
         flags.insert(.invalid)
-        return lhs._quiet._canonical
+        lhs = lhs._quiet
       }
       if rhs.isSignalingNaN {
         flags.insert(.invalid)
-        return rhs._quiet._canonical
+        rhs = rhs._quiet
       }
-
       if lhs.isNaN {
         return lhs._canonical
       }
@@ -1555,19 +1555,18 @@ extension Decimal128: Numeric {
     rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
-    let lhs = self
+    var lhs = self, rhs = rhs
     let isSignMinus = lhs._isSignMinus != rhs._isSignMinus
 
     guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
       if lhs.isSignalingNaN {
         flags.insert(.invalid)
-        return lhs._quiet._canonical
+        lhs = lhs._quiet
       }
       if rhs.isSignalingNaN {
         flags.insert(.invalid)
-        return rhs._quiet._canonical
+        rhs = rhs._quiet
       }
-
       if lhs.isNaN {
         return lhs._canonical
       }
@@ -1839,19 +1838,18 @@ extension Decimal128: FloatingPoint {
     rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
-    let lhs = self
+    var lhs = self, rhs = rhs
     let isSignMinus = lhs._isSignMinus != rhs._isSignMinus
 
     guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
       if lhs.isSignalingNaN {
         flags.insert(.invalid)
-        return lhs._quiet._canonical
+        lhs = lhs._quiet
       }
       if rhs.isSignalingNaN {
         flags.insert(.invalid)
-        return rhs._quiet._canonical
+        rhs = rhs._quiet
       }
-
       if lhs.isNaN {
         return lhs._canonical
       }
