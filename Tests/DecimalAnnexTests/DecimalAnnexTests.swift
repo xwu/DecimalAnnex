@@ -1,8 +1,9 @@
-import XCTest
+import Testing
 @testable import DecimalAnnex
 
-final class DecimalAnnexTests: XCTestCase {
-  func testDPD() throws {
+struct DecimalAnnexTests {
+  @Test
+  func testDPD() {
     let fixture: [(decoded: UInt16, encoded: UInt16)] = [
       // Collated from online sources.
       (decoded:   5, encoded: 0b000_000_0101),
@@ -22,39 +23,38 @@ final class DecimalAnnexTests: XCTestCase {
       (decoded: 999, encoded: 0b001_111_1111),
     ]
     for (d, e) in fixture {
-      XCTAssertEqual(d, _DPD.decode(e))
-      XCTAssertEqual(_DPD.encode(d), e)
+      #expect(d == _DPD.decode(e))
+      #expect(_DPD.encode(d) == e)
     }
   }
 
-  func testUInt256() throws {
-    guard #available(
-      anyAppleOS 26.0, *
-    ) else { return }
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testUInt256() {
     do {
-      XCTAssertEqual(
-        _UInt256.max.description,
+      #expect(
+        _UInt256.max.description ==
         "115792089237316195423570985008687907853269984665640564039457584007913129639935")
     }
     do {
       let lhs = _UInt256("2369676578372158364766242369061213561181961479062237766620")!
       let rhs = _UInt256("102797312405202436815976773795958969482")!
-      XCTAssertEqual(String(lhs / rhs), "23051931251193218442")
+      #expect(String(lhs / rhs) == "23051931251193218442")
     }
     do {
       let lhs = _UInt256("96467201117289166187766181030232879447148862859323917044548749804018359008044")!
       let rhs = _UInt256("4646260627574879223760172113656436161581617773435991717024")!
-      XCTAssertEqual(String(lhs / rhs), "20762331011904583253")
+      #expect(String(lhs / rhs) == "20762331011904583253")
     }
     do {
       for i in 0...255 {
         let x = (1 as _UInt256) &<< i
-        XCTAssertEqual(x.description.utf8.count, x._commonLogarithm + 1)
-        XCTAssertEqual((x-1).description.utf8.count, (x-1)._commonLogarithm + 1)
+        #expect(x.description.utf8.count == x._commonLogarithm + 1)
+        #expect((x-1).description.utf8.count == (x-1)._commonLogarithm + 1)
       }
       for i in 0...77 {
-        XCTAssertEqual(_UInt256._exp10(i)._commonLogarithm, i)
-        XCTAssertEqual((_UInt256._exp10(i) - 1)._commonLogarithm, max(0, i - 1))
+        #expect(_UInt256._exp10(i)._commonLogarithm == i)
+        #expect((_UInt256._exp10(i) - 1)._commonLogarithm == max(0, i - 1))
       }
     }
     do {
@@ -62,40 +62,33 @@ final class DecimalAnnexTests: XCTestCase {
         let m = 100_000_000_000_000_000_000_000_000_000_000_000_000 as _UInt256
         let x = _UInt256.random(in: m..<(m * m))
         let (q, r) = x._quotientAndRemainderDividingBy1e38()
-        XCTAssertTrue(x.quotientAndRemainder(dividingBy: m) == (q, r))
-        XCTAssertTrue(
-          m.low.dividingFullWidth((x.high, x.low)) == (q.low, r.low))
+        #expect(x.quotientAndRemainder(dividingBy: m) == (q, r))
+        #expect(m.low.dividingFullWidth((x.high, x.low)) == (q.low, r.low))
       }
     }
   }
 
-  func testLog10() throws {
-    guard #available(
-      anyAppleOS 26.0, *
-    ) else { return }
-
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testLog10() {
     for _ in 0...65535 {
       let x = UInt128.random(in: 0...UInt128.max)
-      XCTAssertEqual(x._commonLogarithm, String(x).count - 1)
+      #expect(x._commonLogarithm == String(x).count - 1)
     }
   }
 
-  func testPi() throws {
-    guard #available(
-      anyAppleOS 26.0, *
-    ) else { return }
-
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testPi() {
     let x = Decimal128.pi
-    XCTAssertEqual(x.description, "3.141592653589793238462643383279503")
+    #expect(x.description == "3.141592653589793238462643383279503")
   }
 
   // TODO: Test `nextUp`.
 
-  func testEquatable() throws {
-    guard #available(
-      anyAppleOS 26.0, *
-    ) else { return }
-
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testEquatable() {
     let x = Decimal128(
       _sign: .minus,
       combinationBitPattern: 6177 << 3,
@@ -105,15 +98,13 @@ final class DecimalAnnexTests: XCTestCase {
       combinationBitPattern: 6178 << 3,
       trailingSignificandBitPattern: 1)
 
-    XCTAssertTrue(x == y)
-    XCTAssertFalse(x == -y)
+    #expect(x == y)
+    #expect(!(x == -y))
   }
 
-  func testAddingZero() throws {
-    guard #available(
-      anyAppleOS 26.0, *
-    ) else { return }
-
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testAddingZero() {
     let x = Decimal128(
       _sign: .minus,
       combinationBitPattern: 6177 << 3,
@@ -122,53 +113,45 @@ final class DecimalAnnexTests: XCTestCase {
       _sign: .minus,
       combinationBitPattern: 6178 << 3,
       trailingSignificandBitPattern: 1)
-    XCTAssertEqual(
-      x._addingZeroWithLeastQuantum().bitPattern,
+    #expect(
+      x._addingZeroWithLeastQuantum().bitPattern ==
       y._addingZeroWithLeastQuantum().bitPattern)
   }
 
-  func testIntegerLiteral() throws {
-    guard #available(
-      anyAppleOS 26.0, *
-    ) else { return }
-
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testIntegerLiteral() {
     let x = 0 as Decimal128
-    XCTAssertTrue(x.isZero)
+    #expect(x.isZero)
   }
 
-  func testAddition() throws {
-    guard #available(
-      anyAppleOS 26.0, *
-    ) else { return }
-
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testAddition() {
     for i in 0..<256 {
       for j in 0..<256 {
         let x = Decimal128(integerLiteral: Int128(i))
         let y = Decimal128(integerLiteral: Int128(j))
-        XCTAssertEqual(Double(i + j).description, (x + y).description + "0")
+        #expect(Double(i + j).description == (x + y).description + "0")
       }
     }
   }
 
-  func testMultiplication() throws {
-    guard #available(
-      anyAppleOS 26.0, *
-    ) else { return }
-
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testMultiplication() {
     for i in 0..<256 {
       for j in 0..<256 {
         let x = Decimal128(integerLiteral: Int128(i))
         let y = Decimal128(integerLiteral: Int128(j))
-        XCTAssertEqual(Double(i * j).description, (x * y).description + "0")
+        #expect(Double(i * j).description == (x * y).description + "0")
       }
     }
   }
 
-  func testDescription() throws {
-    guard #available(
-      anyAppleOS 26.0, *
-    ) else { return }
-
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testDescription() {
     // As a concession to the idiosyncrasies of float literals, we will write
     // "." at the end of integral values in order to hint that these are
     // floating-point values.
@@ -176,7 +159,7 @@ final class DecimalAnnexTests: XCTestCase {
       _sign: .minus,
       combinationBitPattern: 6176 << 3,
       trailingSignificandBitPattern: 1)
-    XCTAssertEqual(y.description, "-1.")
+    #expect(y.description == "-1.")
 
     // Otherwise, though, we don't take the special code paths to avoid
     // scientific notation if there's not enough significant figures, and we
@@ -185,12 +168,12 @@ final class DecimalAnnexTests: XCTestCase {
       _sign: .minus,
       combinationBitPattern: 6177 << 3,
       trailingSignificandBitPattern: 10)
-    XCTAssertEqual(z.description, "-1.0e+2")
+    #expect(z.description == "-1.0e+2")
 
     z = Decimal128(
       _sign: .minus,
       combinationBitPattern: 6178 << 3,
       trailingSignificandBitPattern: 1)
-    XCTAssertEqual(z.description, "-1e+2")
+    #expect(z.description == "-1e+2")
   }
 }
