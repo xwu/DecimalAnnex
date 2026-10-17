@@ -21,21 +21,3 @@ public struct DecimalFloatingPointStatusFlags:
 internal func _signal(_: DecimalFloatingPointStatusFlags) {
   // No-op (for now).
 }
-
-@inlinable
-internal func _signal(_: DecimalFloatingPointStatusFlags, `default`: Bool) -> Bool {
-  // No-op (for now).
-  return `default`
-}
-
-@inlinable
-internal func _signal(_: DecimalFloatingPointStatusFlags, `default`: String) -> String {
-  // No-op (for now).
-  return `default`
-}
-
-@inlinable
-internal func _signal<T: Numeric>(_: DecimalFloatingPointStatusFlags, `default`: T) -> T {
-  // No-op (for now).
-  return `default`
-}
