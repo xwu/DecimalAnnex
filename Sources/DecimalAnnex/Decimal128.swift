@@ -1240,6 +1240,37 @@ extension Decimal128: AdditiveArithmetic {
     }
 
     var (e1, e2) = (lhs.exponentBitPattern, rhs.exponentBitPattern)
+
+    if e1 == e2 {
+      var isSignMinus = lhs._isSignMinus
+      var c1 = lhs.significandBitPattern
+      let c2 = rhs.significandBitPattern
+      if isSignMinus == rhs._isSignMinus {
+        c1 &+= c2
+        if c1 >= ._1e34 {
+          return ._round(
+            isSignMinus: isSignMinus,
+            biasedExponent: Int(e1),
+            significand: (0, c1), // TODO: Consider not using the general rounder.
+            rule,
+            &flags)
+        }
+      } else {
+        let borrow: Bool
+        (c1, borrow) = c1.subtractingReportingOverflow(c2)
+        if borrow {
+          c1 = ~c1 &+ 1
+          isSignMinus.toggle()
+        } else if c1 == 0 {
+          // Exact zero. See IEEE 754 §6.3.
+          isSignMinus = rule == .down
+        }
+      }
+      // Exact result.
+      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e1) &<< 113 | c1)
+      return isSignMinus ? -abs : abs
+    }
+
     if e1 < e2 {
       swap(&e1, &e2)
       swap(&lhs, &rhs)
@@ -1337,11 +1368,10 @@ extension Decimal128: AdditiveArithmetic {
     }
 
     // Compute the intermediate result.
-    var (hi, lo) = n == 0
-      ? (0, c1)
-      : n <= 38
-        ? c1._multipliedFullWidth(by1e: n)
-        : (c1 * ._exp10[n &- 34]).multipliedFullWidth(by: ._1e34)
+    assert(n != 0)
+    var (hi, lo) = n <= 38
+      ? c1._multipliedFullWidth(by1e: n)
+      : (c1 * ._exp10[n &- 34]).multipliedFullWidth(by: ._1e34)
     if isSignMinus == rhs._isSignMinus {
       let carry: Bool
       (lo, carry) = lo.addingReportingOverflow(c2)
