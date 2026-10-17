@@ -1281,10 +1281,79 @@ extension Decimal128: AdditiveArithmetic {
     let n = Int(e1 &- e2)
 
     var isSignMinus = lhs._isSignMinus
-
     var c1 = lhs.significandBitPattern
-    let logc1 = c1._commonLogarithm
     let c2 = rhs.significandBitPattern
+
+    shrink: if n <= 34 && c1 >= ._1e33 {
+      // `lhs > rhs`, given `e1 > e2` and `c1` has 34 digits.
+      var e = e1
+      var divisor: UInt128 = unsafe ._exp10[unchecked: n]
+      var (q, r) = c2 < divisor
+        ? (0, c2)
+        : c2._quotientAndRemainder(dividingBy1e: n)
+      // Don't mutate `c1` within this scope as we may fall through (see below).
+      if isSignMinus == rhs._isSignMinus {
+        q = c1 &+ q
+      } else {
+        q = c1 &- q
+        if r != 0 {
+          q &-= 1
+          r = divisor &- r
+        }
+      }
+      // Continue only if we still have full precision.
+      guard q >= ._1e33 else { break shrink }
+
+      let sticky: Bool
+      if q >= ._1e34 {
+        sticky = r != 0
+        (q, r) = q.quotientAndRemainder(dividingBy: 10)
+        divisor = 10
+        e &+= 1
+      } else {
+        sticky = false
+      }
+      guard e <= 12287 else {
+        return ._overflow(isSignMinus: isSignMinus, rule, &flags)
+      }
+      if r != 0 || sticky {
+        let half = divisor &>> 1
+        let nextAway: Bool =
+          switch rule {
+          case .awayFromZero:
+            true
+          case .down:
+            isSignMinus
+          case .toNearestOrAwayFromZero:
+            r >= half
+          case .toNearestOrEven:
+            r > half || (r == half && (sticky || (q & 1) != 0))
+          case .towardZero:
+            false
+          case .up:
+            !isSignMinus
+          @unknown default:
+            fatalError("Unknown rounding rule.")
+          }
+        if nextAway {
+          if q == ._1e34 &- 1 {
+            if e == 12287 {
+              flags.formUnion(.overflowInexact)
+              return isSignMinus ? -.infinity : .infinity
+            }
+            q = ._1e33
+            e &+= 1
+          } else {
+            q &+= 1
+          }
+        }
+        flags.insert(.inexact)
+      }
+      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | q)
+      return isSignMinus ? -abs : abs
+    }
+
+    let logc1 = c1._commonLogarithm
     let logc2 = c2._commonLogarithm
     let delta = n &+ (logc1 &- logc2)
     if delta > 34 {
