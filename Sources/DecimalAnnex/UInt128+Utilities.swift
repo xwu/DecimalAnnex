@@ -55,12 +55,59 @@ extension UInt128 {
       100_000_000_000_000_000_000_000_000_000_000_000_000,    // 38
   ]
 
+  /// Pre-computed reciprocal multiplication constants for division by `10**n`.
+  ///
+  /// Specifically, `shift = ⌊log2(5**n)⌋` and
+  /// `multiplier = ⌈2**(128 + shift) / 5**n⌉`.
+  @usableFromInline
+  internal static let _divisionBy1e: [39 of (multiplier: Self, shift: Int)] = [
+    (0, 0), // Unused: exponent must be in `1...38`.
+    (0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCD,  2), //  1
+    (0xA3D70A3D70A3D70A3D70A3D70A3D70A4,  4), //  2
+    (0x83126E978D4FDF3B645A1CAC083126EA,  6), //  3
+    (0xD1B71758E219652BD3C36113404EA4A9,  9), //  4
+    (0xA7C5AC471B4784230FCF80DC33721D54, 11), //  5
+    (0x8637BD05AF6C69B5A63F9A49C2C1B110, 13), //  6
+    (0xD6BF94D5E57A42BC3D32907604691B4D, 16), //  7
+    (0xABCC77118461CEFCFDC20D2B36BA7C3E, 18), //  8
+    (0x89705F4136B4A59731680A88F8953031, 20), //  9
+    (0xDBE6FECEBDEDD5BEB573440E5A884D1C, 23), // 10
+    (0xAFEBFF0BCB24AAFEF78F69A51539D749, 25), // 11
+    (0x8CBCCC096F5088CBF93F87B7442E45D4, 27), // 12
+    (0xE12E13424BB40E132865A5F206B06FBA, 30), // 13
+    (0xB424DC35095CD80F538484C19EF38C95, 32), // 14
+    (0x901D7CF73AB0ACD90F9D37014BF60A11, 34), // 15
+    (0xE69594BEC44DE15B4C2EBE687989A9B4, 37), // 16
+    (0xB877AA3236A4B44909BEFEB9FAD487C3, 39), // 17
+    (0x9392EE8E921D5D073AFF322E62439FD0, 41), // 18
+    (0xEC1E4A7DB69561A52B31E9E3D06C32E6, 44), // 19
+    (0xBCE5086492111AEA88F4BB1CA6BCF585, 46), // 20
+    (0x971DA05074DA7BEED3F6FC16EBCA5E04, 48), // 21
+    (0xF1C90080BAF72CB15324C68B12DD6339, 51), // 22
+    (0xC16D9A0095928A2775B7053C0F178294, 53), // 23
+    (0x9ABE14CD44753B52C4926A9672793543, 55), // 24
+    (0xF79687AED3EEC5513A83DDBD83F52205, 58), // 25
+    (0xC612062576589DDA95364AFE032A819E, 60), // 26
+    (0x9E74D1B791E07E48775EA264CF55347E, 62), // 27
+    (0xFD87B5F28300CA0D8BCA9D6E188853FD, 65), // 28
+    (0xCAD2F7F5359A3B3E096EE45813A04331, 67), // 29
+    (0xA2425FF75E14FC31A1258379A94D028E, 69), // 30
+    (0x81CEB32C4B43FCF480EACF948770CED8, 71), // 31
+    (0xCFB11EAD453994BA67DE18EDA5814AF3, 74), // 32
+    (0xA6274BBDD0FADD61ECB1AD8AEACDD58F, 76), // 33
+    (0x84EC3C97DA624AB4BD5AF13BEF0B113F, 78), // 34
+    (0xD4AD2DBFC3D07787955E4EC64B44E865, 81), // 35
+    (0xAA242499697392D2DDE50BD1D5D0B9EA, 83), // 36
+    (0x881CEA14545C75757E50D64177DA2E55, 85), // 37
+    (0xD9C7DCED53C7225596E7BD358C904A22, 88), // 38
+  ]
+
   @inlinable
   @inline(always)
   internal func _multipliedFullWidth(
     by1e exponent: Int
   ) -> (high: Self, low: Self) {
-    let multiplier: UInt128 = unsafe ._exp10[unchecked: exponent]
+    let multiplier: UInt128 = ._exp10[exponent]
     if exponent <= 19 && self <= 0xffff_ffff_ffff_ffff /* UInt64.max */ {
       let (hi, lo) =
         UInt64(truncatingIfNeeded: self).multipliedFullWidth(
@@ -76,48 +123,10 @@ extension UInt128 {
   internal func _quotientAndRemainder(
     dividingBy1e exponent: Int
   ) -> (quotient: Self, remainder: Self) {
-    let (multiplier, shift): (UInt128, Int) =
-      switch exponent {
-      case  1: (0xCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCD,  2)
-      case  2: (0xA3D70A3D70A3D70A3D70A3D70A3D70A4,  4)
-      case  3: (0x83126E978D4FDF3B645A1CAC083126EA,  6)
-      case  4: (0xD1B71758E219652BD3C36113404EA4A9,  9)
-      case  5: (0xA7C5AC471B4784230FCF80DC33721D54, 11)
-      case  6: (0x8637BD05AF6C69B5A63F9A49C2C1B110, 13)
-      case  7: (0xD6BF94D5E57A42BC3D32907604691B4D, 16)
-      case  8: (0xABCC77118461CEFCFDC20D2B36BA7C3E, 18)
-      case  9: (0x89705F4136B4A59731680A88F8953031, 20)
-      case 10: (0xDBE6FECEBDEDD5BEB573440E5A884D1C, 23)
-      case 11: (0xAFEBFF0BCB24AAFEF78F69A51539D749, 25)
-      case 12: (0x8CBCCC096F5088CBF93F87B7442E45D4, 27)
-      case 13: (0xE12E13424BB40E132865A5F206B06FBA, 30)
-      case 14: (0xB424DC35095CD80F538484C19EF38C95, 32)
-      case 15: (0x901D7CF73AB0ACD90F9D37014BF60A11, 34)
-      case 16: (0xE69594BEC44DE15B4C2EBE687989A9B4, 37)
-      case 17: (0xB877AA3236A4B44909BEFEB9FAD487C3, 39)
-      case 18: (0x9392EE8E921D5D073AFF322E62439FD0, 41)
-      case 19: (0xEC1E4A7DB69561A52B31E9E3D06C32E6, 44)
-      case 20: (0xBCE5086492111AEA88F4BB1CA6BCF585, 46)
-      case 21: (0x971DA05074DA7BEED3F6FC16EBCA5E04, 48)
-      case 22: (0xF1C90080BAF72CB15324C68B12DD6339, 51)
-      case 23: (0xC16D9A0095928A2775B7053C0F178294, 53)
-      case 24: (0x9ABE14CD44753B52C4926A9672793543, 55)
-      case 25: (0xF79687AED3EEC5513A83DDBD83F52205, 58)
-      case 26: (0xC612062576589DDA95364AFE032A819E, 60)
-      case 27: (0x9E74D1B791E07E48775EA264CF55347E, 62)
-      case 28: (0xFD87B5F28300CA0D8BCA9D6E188853FD, 65)
-      case 29: (0xCAD2F7F5359A3B3E096EE45813A04331, 67)
-      case 30: (0xA2425FF75E14FC31A1258379A94D028E, 69)
-      case 31: (0x81CEB32C4B43FCF480EACF948770CED8, 71)
-      case 32: (0xCFB11EAD453994BA67DE18EDA5814AF3, 74)
-      case 33: (0xA6274BBDD0FADD61ECB1AD8AEACDD58F, 76)
-      case 34: (0x84EC3C97DA624AB4BD5AF13BEF0B113F, 78)
-      case 35: (0xD4AD2DBFC3D07787955E4EC64B44E865, 81)
-      case 36: (0xAA242499697392D2DDE50BD1D5D0B9EA, 83)
-      case 37: (0x881CEA14545C75757E50D64177DA2E55, 85)
-      case 38: (0xD9C7DCED53C7225596E7BD358C904A22, 88)
-      default: preconditionFailure()
-      }
+    guard exponent != 0 else {
+      return (self, 0)
+    }
+    let (multiplier, shift): (UInt128, Int) = UInt128._divisionBy1e[exponent]
     let q =
       (self &>> exponent).multipliedFullWidth(by: multiplier).high &>> shift
     let r = unsafe self &- q &* ._exp10[unchecked: exponent]
@@ -129,75 +138,46 @@ extension UInt128 {
     fullWidth dividend: (high: Self, low: Self),
     dividingBy1e exponent: Int
   ) -> (quotient: Self, remainder: Self) {
-    assert(dividend.high < UInt128._exp10[exponent])
-
-    // One round of short division in base `2**128`
-    //   (cf. Knuth exercise 4.3.1-16).
-    // Requires `e <= 19` and `high < 10**e`,
-    //   s.t. `high * r1` overflows at most once.
-    @inline(always)
-    func _divide(high: Self, low: Self, by1e e: Int) -> (Self, Self) {
-      // Since base `2**128` is not a multiple of the divisor `10**e`,
-      // we split the base into `q1 * d + r1`.
-      let (q1, r1): (UInt128, UInt128) =
-        switch e {
-        case  1: (34028236692093846346337460743176821145, 6)
-        case  2: (3402823669209384634633746074317682114, 56)
-        case  3: (340282366920938463463374607431768211, 456)
-        case  4: (34028236692093846346337460743176821, 1456)
-        case  5: (3402823669209384634633746074317682, 11456)
-        case  6: (340282366920938463463374607431768, 211456)
-        case  7: (34028236692093846346337460743176, 8211456)
-        case  8: (3402823669209384634633746074317, 68211456)
-        case  9: (340282366920938463463374607431, 768211456)
-        case 10: (34028236692093846346337460743, 1768211456)
-        case 11: (3402823669209384634633746074, 31768211456)
-        case 12: (340282366920938463463374607, 431768211456)
-        case 13: (34028236692093846346337460, 7431768211456)
-        case 14: (3402823669209384634633746,  7431768211456) // (sic)
-        case 15: (340282366920938463463374, 607431768211456)
-        case 16: (34028236692093846346337, 4607431768211456)
-        case 17: (3402823669209384634633, 74607431768211456)
-        case 18: (340282366920938463463, 374607431768211456)
-        case 19: (34028236692093846346, 3374607431768211456)
-        default: preconditionFailure()
-        }
-      // Substituting, the dividend becomes `high * (q1 * d + r1) + low`.
-      // Rearranging, `d * (high * q1) + (high * r1 + low)`.
-      //
-      // The result of full-width flooring division by `d` is then
-      // `(high * q1) + ⌊ (high * r1 + low) / d ⌋`, and the remainder is
-      // `(high * r1 + low) % d`.
-      //
-      // Compute `high * r1 + low`, which may overflow by a carry bit
-      // (`high * r1` itself can't overflow, since `high < d` and `r1 < d`
-      // and `d * d < UInt128.max`):
-      let (sum_, carry_) = low.addingReportingOverflow(high &* r1)
-      let carry: UInt128 = carry_ ? 1 : 0
-      // Compute `⌊ (high * r1 + low) / d ⌋` and `(high * r1 + low) % d`.
-      // When there's been a carry, we again use the identity
-      // `2**128 = q1 * d + r1`, giving us:
-      //
-      //     (high * r1 + low) / d
-      //   = (sum_ + 2**128) / d
-      //   = (sum_ + q1 * d + r1) / d
-      //   = (sum_ + r1) / d + q1
-      //
-      // That is, we add `carry * r1` to the value to be divided by `d`...
-      let (q2, r2) =
-        (sum_ &+ carry &* r1)._quotientAndRemainder(dividingBy1e: e)
-      // ...and we need to add `carry * q1` to the final quotient.
-      return (high &* q1 &+ carry &* q1 &+ q2, r2)
+    guard exponent != 0 else {
+      precondition(dividend.high == 0)
+      return (dividend.low, 0)
     }
+    let divisor: UInt128 = ._exp10[exponent]
+    precondition(dividend.high < divisor)
 
-    if exponent <= 19 {
-      return _divide(high: dividend.high, low: dividend.low, by1e: exponent)
+    var (multiplier, shift): (UInt128, Int) =
+      unsafe UInt128._divisionBy1e[unchecked: exponent]
+    // In this case, we want `⌊2**(128 + shift) / 5**exponent⌋` to underestimate
+    // the quotient (and overestimate the remainder).
+    multiplier &-= 1
+    // Rather than shift the dividend up front by `exponent` and then shift the
+    // quotient finally by `shift` as in the helper above, we shift the quotient
+    // by `shift + exponent`, since `divisor` is a multiple of `2**exponent`.
+    shift &+= exponent
+    var (hi, mid) = dividend.high.multipliedFullWidth(by: multiplier)
+    let (mid_, _) = dividend.low.multipliedFullWidth(by: multiplier)
+    let carry: Bool
+    (mid, carry) = mid.addingReportingOverflow(mid_)
+    if carry { hi &+= 1 }
+    let q = (hi &<< (128 &- shift)) | (mid &>> shift)
+    // With `multiplier` rounded down, we lose up to one `dividend` from the
+    // computed product. After lower limb truncation, our underestimate is off
+    // by at most `dividend.high + 1 <= divisor`. Since right shift computes
+    // division by `2**shift` and `shift` selects the largest power of two that
+    // does not exceed `divisor`, `q` underestimates the true flooring quotient
+    // by at most `divisor / 2**shift <= 2`.
+
+    // Since the actual `remainder` must be less than `divisor`, we know our
+    // overestimate `r` must be representable in `UInt128` because it is at most
+    // `remainder + divisor * 2 < 3 * (10**38) < UInt128.max`, and therefore
+    // the high limb of the following subtraction must cancel.
+    let r = dividend.low &- q &* divisor
+    // Correct `r` if needed.
+    if r >= divisor {
+      let dd = divisor &<< 1 // `divisor * 2`.
+      return r >= dd ? (q &+ 2, r &- dd) : (q &+ 1, r &- divisor)
     }
-    // First divide by `10**19`, then by `10**(e - 19)`.
-    let (q1, r1) = dividend.high._quotientAndRemainder(dividingBy1e: 19)
-    let (q2, r2) = _divide(high: r1, low: dividend.low, by1e: 19)
-    let (q3, r3) = _divide(high: q1, low: q2, by1e: exponent &- 19)
-    return (q3, r3 &* 10_000_000_000_000_000_000 &+ r2)
+    return (q, r)
   }
 
   // Exact division by a constant (cf. Granlund and Montgomery, 1994 §9).
