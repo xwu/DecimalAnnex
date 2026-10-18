@@ -1999,7 +1999,26 @@ extension Decimal128: FloatingPoint {
           }
           (q, r) = (overestimate, lc &- product)
         } else {
-          (q, r) = lc.quotientAndRemainder(dividingBy: rc)
+          // Retain up to 64 significant bits of `lc`,
+          // shifting `rc` by the same amount.
+          let shift = max(0, 64 &- lc.leadingZeroBitCount)
+          let lh = UInt64(truncatingIfNeeded: lc &>> shift)
+          let rh = UInt64(truncatingIfNeeded: rc &>> shift)
+          if shift == 0 {
+            let q_ = lh / rh
+            (q, r) = (UInt128(q_), UInt128(lh &- q_ &* rh))
+          } else if rh >= 0x1_0000_0000 // Avoid overflow in the following product.
+              || rh &* (rh &+ 2) > lh {
+            var overestimate = UInt128(lh / rh)
+            var product = overestimate &* rc
+            if product > lc {
+              product &-= rc
+              overestimate &-= 1
+            }
+            (q, r) = (overestimate, lc &- product)
+          } else {
+            (q, r) = lc.quotientAndRemainder(dividingBy: rc)
+          }
         }
       }
       if r == 0 {
