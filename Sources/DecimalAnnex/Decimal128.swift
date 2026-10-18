@@ -957,8 +957,10 @@ extension Decimal128: AdditiveArithmetic {
     return isSignMinus ? -magnitude : magnitude
   }
 
+  /// Returns the given intermediate result packed into a `Decimal`, handling
+  /// exponent limits and rounding according to the given rule.
   @inlinable
-  internal static func _round(
+  internal static func _pack(
       isSignMinus: Bool,
       biasedExponent: Int,
       significand: (high: UInt128, low: UInt128),
@@ -1251,7 +1253,7 @@ extension Decimal128: AdditiveArithmetic {
       if isSignMinus == rhs._isSignMinus {
         c1 &+= c2
         if c1 >= ._1e34 {
-          return ._round(
+          return ._pack(
             isSignMinus: isSignMinus,
             biasedExponent: Int(e1),
             significand: (0, c1), // TODO: Consider not using the general rounder.
@@ -1466,7 +1468,7 @@ extension Decimal128: AdditiveArithmetic {
       }
     }
 
-    return ._round(
+    return ._pack(
       isSignMinus: isSignMinus,
       biasedExponent: Int(e2),
       significand: (hi, lo),
@@ -1683,7 +1685,7 @@ extension Decimal128: Numeric {
       product = lc.multipliedFullWidth(by: rc)
     }
 
-    return ._round(
+    return ._pack(
       isSignMinus: isSignMinus,
       biasedExponent: e,
       significand: product,
@@ -1961,7 +1963,7 @@ extension Decimal128: FloatingPoint {
         let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | lc)
         return isSignMinus ? -abs : abs
       }
-      return ._round(
+      return ._pack(
         isSignMinus: isSignMinus,
         biasedExponent: e,
         significand: (0, lc),
@@ -2005,7 +2007,7 @@ extension Decimal128: FloatingPoint {
           let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | q)
           return isSignMinus ? -abs : abs
         }
-        return ._round(
+        return ._pack(
           isSignMinus: isSignMinus,
           biasedExponent: e,
           significand: (0, q),
@@ -2072,7 +2074,7 @@ extension Decimal128: FloatingPoint {
         let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | quo)
         return isSignMinus ? -abs : abs
       }
-      return ._round(
+      return ._pack(
         isSignMinus: isSignMinus,
         biasedExponent: e,
         significand: (0, quo),
