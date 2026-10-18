@@ -1964,7 +1964,7 @@ extension Decimal128: FloatingPoint {
       return ._round(
         isSignMinus: isSignMinus,
         biasedExponent: e,
-        significand: (0, lc), // TODO: Does this really require the general rounder?
+        significand: (0, lc),
         rule,
         &flags)
     }
@@ -1982,7 +1982,7 @@ extension Decimal128: FloatingPoint {
         return ._round(
           isSignMinus: isSignMinus,
           biasedExponent: e,
-          significand: (0, q), // TODO: Does this really require the general rounder?
+          significand: (0, q),
           rule,
           &flags)
       }
@@ -2000,13 +2000,67 @@ extension Decimal128: FloatingPoint {
     let pe = e // Hang on to the preferred exponent for later.
     e &-= n
 
-    let rr = rem &<< 1 // `rem * 2`.
-    if rem != 0 && e >= 0 && e <= 12287 {
+    if rem == 0 {
+      if e >= 0 && e <= 12287 {
+        let pe = min(12287, pe)
+        if e < pe {
+          if (quo & 1) == 0, let quo_ = quo._quotientIfExactDividingBy10() {
+            var delta = pe &- (e &+ 1)
+            quo = quo_
+            if delta >= 32 && (quo & 0xFFFFFFFF) == 0,
+                let quo_ = quo._quotientIfExactDividingBy1e32() {
+              delta &-= 32
+              quo = quo_
+            }
+            if delta >= 16 && (quo & 0xFFFF) == 0,
+                let quo_ = quo._quotientIfExactDividingBy1e16() {
+              delta &-= 16
+              quo = quo_
+            }
+            if delta >= 8 && (quo & 0xFF) == 0,
+                let quo_ = quo._quotientIfExactDividingBy1e8() {
+              delta &-= 8
+              quo = quo_
+            }
+            if delta >= 4 && (quo & 0xF) == 0,
+                let quo_ = quo._quotientIfExactDividingBy10000() {
+              delta &-= 4
+              quo = quo_
+            }
+            if delta >= 2 && (quo & 0x3) == 0,
+                let quo_ = quo._quotientIfExactDividingBy100() {
+              delta &-= 2
+              quo = quo_
+            }
+            if delta >= 1 && (quo & 1) == 0,
+                let quo_ = quo._quotientIfExactDividingBy10() {
+              delta &-= 1
+              quo = quo_
+            }
+            e = pe &- delta
+          }
+        }
+        let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | quo)
+        return isSignMinus ? -abs : abs
+      }
+      return ._round(
+        isSignMinus: isSignMinus,
+        biasedExponent: e,
+        significand: (0, quo),
+        preferredBiasedExponent: pe,
+        rule,
+        &flags)
+    }
+    if e > 12287 {
+      return ._overflow(isSignMinus: isSignMinus, rule, &flags)
+    }
+    if e >= 0 {
+      let rr = rem &<< 1 // `rem * 2`.
       if Self._roundsAway(
         isSignMinus: isSignMinus,
         significand: quo,
         digit: rr >= rc ? 5 : 0,
-        // A proxy guard digit (5 if midpoint or above; otherwise 0).
+        // A proxy guard digit (5 if midpoint or above; else 0).
         sticky: rr != rc,
         rule
       ) {
@@ -2025,26 +2079,28 @@ extension Decimal128: FloatingPoint {
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | quo)
       return isSignMinus ? -abs : abs
     }
-    if rem == 0 {
-      return ._round(
-        isSignMinus: isSignMinus,
-        biasedExponent: e,
-        significand: (0, quo), // TODO: Does this really require the general rounder?
-        preferredBiasedExponent: pe,
-        rule,
-        &flags)
+    // Inexact underflow.
+    let digit: UInt8 // A proxy guard digit (5 if midpoint or above; else 0).
+    if e < -34 {
+      quo = 0
+      digit = 0
+    } else {
+      let r: UInt128
+      (quo, r) = quo._quotientAndRemainder(dividingBy1e: -e)
+      digit = unsafe r >= (._exp10[unchecked: -e] &>> 1) ? 5 : 0
     }
-    return ._round(
+    if Self._roundsAway(
       isSignMinus: isSignMinus,
-      biasedExponent: e &- 1,
-      significand: (0, quo &* 10 &+ (rr >= rc ? 5 : 0)),
-      // Tack on a proxy guard digit (5 if midpoint or above; otherwise 0).
-      // TODO: Using integer multiplication to pass in a guard digit is inelegant.
-      // ...Perhaps restore passing a tail or round bit?
-      sticky: /* rem != 0 && */ rr != rc,
-      preferredBiasedExponent: pe,
-      rule,
-      &flags)
+      significand: quo,
+      digit: digit,
+      sticky: true,
+      rule
+    ) {
+      quo &+= 1
+    }
+    flags.formUnion(.underflowInexact)
+    let abs = Self(bitPattern: quo)
+    return isSignMinus ? -abs : abs
   }
 
   @inline(always)
