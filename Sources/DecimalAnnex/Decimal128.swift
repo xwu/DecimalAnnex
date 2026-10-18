@@ -1466,7 +1466,7 @@ extension Decimal128: AdditiveArithmetic {
       }
     }
 
-    return Self._round(
+    return ._round(
       isSignMinus: isSignMinus,
       biasedExponent: Int(e2),
       significand: (hi, lo),
@@ -1973,7 +1973,33 @@ extension Decimal128: FloatingPoint {
     var quo: UInt128
     let rem: UInt128
     if lc >= rc {
-      let (q, r) = lc.quotientAndRemainder(dividingBy: rc)
+      let q, r: UInt128
+      if lc &- rc < rc {
+        (q, r) = (1, lc &- rc)
+      } else {
+        // Compute the high half of each significand.
+        let lh = UInt64(truncatingIfNeeded: lc &>> 64)
+        let rh = UInt64(truncatingIfNeeded: rc &>> 64)
+        // If the mathematical product `rh * (rh + 2)` exceeds `lh`, then
+        // `lh / rh` is either exactly the true flooring quotient or it
+        // overestimates by one.
+        //
+        // Since `lc < 10**34`, `lh <= 542_101_086_242_752`.
+        // Thus, `rh >= 23_283_064` satisfies the above inequality for all
+        // possible `lh`.
+        if rh >= 23_283_064 || rh &* (rh &+ 2) > lh {
+          var overestimate = UInt128(lh / rh)
+          // `overestimate` is either exact or off by 1.
+          var product = overestimate &* rc
+          if product > lc {
+            product &-= rc
+            overestimate &-= 1
+          }
+          (q, r) = (overestimate, lc &- product)
+        } else {
+          (q, r) = lc.quotientAndRemainder(dividingBy: rc)
+        }
+      }
       if r == 0 {
         if e >= 0 && e <= 12287 {
           let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | q)
@@ -1986,9 +2012,12 @@ extension Decimal128: FloatingPoint {
           rule,
           &flags)
       }
-      n = 33 &- q._commonLogarithm
+      n = q < 10 ? 33 : 33 &- q._commonLogarithm
       (quo, rem) = rc.dividingFullWidth(r._multipliedFullWidth(by1e: n))
       quo &+= unsafe q &* ._exp10[unchecked: n]
+    } else if lc >= ._1e33 {
+      n = 34
+      (quo, rem) = rc.dividingFullWidth(lc._multipliedFullWidth(by1e: n))
     } else {
       let delta = rc._commonLogarithm &- lc._commonLogarithm
       n = unsafe 33 &+ delta &+ (lc &* ._exp10[unchecked: delta] < rc ? 1 : 0)
