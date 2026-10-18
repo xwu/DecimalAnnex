@@ -268,3 +268,85 @@ extension UInt128 {
       : estimate &- 1
   }
 }
+
+@available(anyAppleOS 26.0, *)
+extension UInt128 {
+  // Division of a full-width dividend by a variable divisor
+  // (cf. Knuth, Algorithm D; Möller and Granlund, 2011, Algorithm 4).
+  @inlinable
+  internal static func _quotientAndRemainder(
+    fullWidth dividend: (high: Self, low: Self),
+    dividingBy divisor: Self
+  ) -> (quotient: Self, remainder: Self) {
+    precondition(dividend.high < divisor && divisor < ._1e34)
+    if dividend.high == 0 && divisor <= 0xffff_ffff_ffff_ffff /* UInt64.max */ {
+      return dividend.low.quotientAndRemainder(dividingBy: divisor)
+    }
+
+    // Normalize so that the divisor's most significant bit is set.
+    // Since `0 < divisor < 10**34 < 2**113`, `shift` is in `15...127`;
+    // `128 &- shift` is never 128, which a masking shift would treat as 0.
+    let shift = divisor.leadingZeroBitCount
+    let divisor = divisor &<< shift
+    let high = dividend.high &<< shift | dividend.low &>> (128 &- shift)
+    let low = dividend.low &<< shift
+    // Compute high and low halves of the normalized divisor (Knuth's `v`).
+    let vh = UInt64(truncatingIfNeeded: divisor &>> 64)
+    let vl = UInt64(truncatingIfNeeded: divisor)
+    // Compute `⌊(2**128 - 1) / vh⌋ - 2**64` once for both quotient words.
+    // The actual approximation to `1 / vh` is `(2**64 + reciprocal) / 2**128`;
+    // the leading `2**64` is implicit and we store the remaining 64 bits.
+    let reciprocal = vh.dividingFullWidth((~vh, .max)).quotient
+
+    // Divides `high << 64 | low` by `divisor`, where `high < divisor`,
+    // returning the quotient word and the remainder.
+    @inline(always)
+    func divide(_ high: UInt128, _ low: UInt64) -> (UInt64, UInt128) {
+      // Compute the high and low halves of `high`.
+      let hh = UInt64(truncatingIfNeeded: high &>> 64)
+      let hl = UInt64(truncatingIfNeeded: high)
+      var q: UInt64
+      var r: UInt128
+      if hh == vh {
+        // The quotient of `high` divided by `vh` would overflow `UInt64`.
+        q = .max
+        r = UInt128(hl) &+ UInt128(vh)
+      } else {
+        // Divide `high` by `vh` using `reciprocal`
+        // (accounting for the implicit leading `2**64`).
+        let product = hh.multipliedFullWidth(by: reciprocal)
+        // `sum` is the low half of the estimate `product + high`.
+        let (sum, carry) = product.low.addingReportingOverflow(hl)
+        q = product.high &+ hh &+ (carry ? 1 : 0) &+ 1
+        // `... &+ 1` selects the middle candidate of three for correction.
+        var r_ = hl &- q &* vh
+        // Negative mathematical remainders wrap to values greater than `sum`.
+        if r_ > sum {
+          q &-= 1
+          r_ &+= vh
+        }
+        // A second correction may undo an unnecessary first correction.
+        if r_ >= vh {
+          q &+= 1
+          r_ &-= vh
+        }
+        r = UInt128(r_)
+      }
+      // Account for the low half of the normalized divisor, decreasing `q` by
+      // at most two. A remainder above `UInt64.max` needs no correction.
+      while r <= 0xffff_ffff_ffff_ffff /* UInt64.max */ &&
+          UInt128(q) &* UInt128(vl) > (r &<< 64 | UInt128(low)) {
+        q &-= 1
+        r &+= UInt128(vh)
+      }
+      // Although `r` may have 65 bits, we know the remainder fits in `UInt128`,
+      // so the following computation preserves the correct result even when
+      // shifting `r` discards a bit.
+      return (q, (r &<< 64 | UInt128(low)) &- UInt128(q) &* UInt128(vl))
+    }
+
+    let (qh, r_) = divide(high, UInt64(truncatingIfNeeded: low &>> 64))
+    let (ql, r) = divide(r_, UInt64(truncatingIfNeeded: low))
+    return (UInt128(qh) &<< 64 | UInt128(ql), r &>> shift)
+  }
+}

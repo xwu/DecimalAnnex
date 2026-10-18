@@ -2017,7 +2017,11 @@ extension Decimal128: FloatingPoint {
             }
             (q, r) = (overestimate, lc &- product)
           } else {
-            (q, r) = lc.quotientAndRemainder(dividingBy: rc)
+            // Avoid less-than-ideal intrinsic performance.
+            (q, r) = rc <= 0xFFFF_FFFF_FFFF_FFFF /* UInt64.max */
+              ? lc.quotientAndRemainder(dividingBy: rc)
+              : UInt128._quotientAndRemainder(
+                  fullWidth: (0, lc), dividingBy: rc)
           }
         }
       }
@@ -2034,18 +2038,21 @@ extension Decimal128: FloatingPoint {
           &flags)
       }
       n = q < 10 ? 33 : 33 &- q._commonLogarithm
-      (quo, rem) = rc.dividingFullWidth(r._multipliedFullWidth(by1e: n))
+      (quo, rem) = UInt128._quotientAndRemainder(
+        fullWidth: r._multipliedFullWidth(by1e: n), dividingBy: rc)
       quo &+= unsafe q &* ._exp10[unchecked: n]
     } else if lc >= ._1e33 {
       n = 34
-      (quo, rem) = rc.dividingFullWidth(lc._multipliedFullWidth(by1e: n))
+      (quo, rem) = UInt128._quotientAndRemainder(
+        fullWidth: lc._multipliedFullWidth(by1e: n), dividingBy: rc)
     } else {
       let delta = rc._commonLogarithm &- lc._commonLogarithm
       n = unsafe 33 &+ delta &+ (lc &* ._exp10[unchecked: delta] < rc ? 1 : 0)
       let dividend = n <= 38
         ? lc._multipliedFullWidth(by1e: n)
         : (lc * ._exp10[n &- 34]).multipliedFullWidth(by: ._1e34)
-      (quo, rem) = rc.dividingFullWidth(dividend)
+      (quo, rem) = UInt128._quotientAndRemainder(
+        fullWidth: dividend, dividingBy: rc)
     }
     let pe = e // Hang on to the preferred exponent for later.
     e &-= n
