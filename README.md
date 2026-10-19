@@ -35,5 +35,6 @@ The flags distinguish invalid operations, division by zero, overflow, underflow,
 ```swift
 var flags: DecimalFloatingPointStatusFlags = []
 _ = (1 as Decimal128).divided(by: 3, rounding: .toNearestOrEven, &flags)
+
 flags.contains(.inexact)  // true
 ```
