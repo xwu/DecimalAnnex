@@ -1286,14 +1286,13 @@ extension Decimal128: AdditiveArithmetic {
     var c1 = lhs.significandBitPattern
     let c2 = rhs.significandBitPattern
 
-    shrink: if n <= 34 && c1 >= ._1e33 {
+    if n <= 34 && c1 >= ._1e33 {
       // `lhs > rhs`, given `e1 > e2` and `c1` has 34 digits.
       var e = e1
       var divisor: UInt128 = unsafe ._exp10[unchecked: n]
       var (q, r) = c2 < divisor
         ? (0, c2)
         : c2._quotientAndRemainder(dividingBy1e: n)
-      // Don't mutate `c1` within this scope as we may fall through (see below).
       if isSignMinus == rhs._isSignMinus {
         q = c1 &+ q
       } else {
@@ -1303,9 +1302,6 @@ extension Decimal128: AdditiveArithmetic {
           r = divisor &- r
         }
       }
-      // Continue only if we still have full precision.
-      guard q >= ._1e33 else { break shrink }
-
       let sticky: Bool
       if q >= ._1e34 {
         sticky = r != 0
@@ -1314,6 +1310,14 @@ extension Decimal128: AdditiveArithmetic {
         e &+= 1
       } else {
         sticky = false
+        // Recover one digit if necessary.
+        if q < ._1e33 {
+          let digit: UInt128
+          (digit, r) = r._quotientAndRemainder(dividingBy1e: n &- 1)
+          q = q &* 10 &+ digit
+          divisor = unsafe ._exp10[unchecked: n &- 1]
+          e &-= 1
+        }
       }
       guard e <= 12287 else {
         return ._overflow(isSignMinus: isSignMinus, rule, &flags)
@@ -1958,6 +1962,20 @@ extension Decimal128: FloatingPoint {
     let lc = lhs.significandBitPattern
     let rc = rhs.significandBitPattern
 
+    // TODO: For `lc < rc`, consider removing exact factors of 10 from `rc`.
+    //
+    // Use `_quotientIfExactDividingBy...` helpers to reach `rc == 1` or
+    // `lc >= rc` to expose the corresponding fast paths.
+    //
+    // Removing `10**k` requires `e -= k`; save the original `e`
+    // as the preferred exponent before doing so. Keep these as integer
+    // intermediates: the reduced divisor's exponent may not fit in `rhs`.
+    //
+    // Both exact early returns below must then honor that original preferred
+    // exponent (e.g., 100 / 2000 must produce 5e-2, not 50e-3), as must the
+    // later `rem == 0` path. `_pack(preferredBiasedExponent:)` can handle this.
+    //
+    // Benchmark the screening cost for divisors without trailing zeros too.
     if rc == 1 {
       if e >= 0 && e <= 12287 {
         let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | lc)
