@@ -51,7 +51,7 @@ extension Decimal128 {
     bitPattern ^= 1 &<< 127
   }
 
-  @inlinable
+  @inline(always)
   public init(signOf sign: Decimal128, magnitudeOf magnitude: Decimal128) {
     bitPattern =
       (sign.bitPattern & (1 &<< 127)) | (magnitude.bitPattern & (~0 &>> 1))
@@ -2228,17 +2228,103 @@ extension Decimal128: FloatingPoint {
     self = squareRoot()
   }
 
+  @inlinable
   public func rounded(_ rule: FloatingPointRoundingRule) -> Decimal128 {
     if isSignalingNaN {
       _signal(.invalid)
       return _quiet._canonical
     }
-    fatalError("Not implemented")
+    if exponentBitPattern >= 6176 { return _canonical }
+    if isZero { return _isSignMinus ? -Self() : Self() }
+
+    let n = Int(exponentBitPattern) &- 6176
+    var c = significandBitPattern
+    let digit: UInt128
+    let sticky: Bool
+    if n < -34 {
+      (c, digit) = (0, 0)
+      sticky = true
+    } else {
+      let (q, r) = c._quotientAndRemainder(dividingBy1e: -n &- 1)
+      (c, digit) = q.quotientAndRemainder(dividingBy: 10)
+      sticky = r != 0
+    }
+    if Self._roundsAway(
+      isSignMinus: _isSignMinus,
+      significand: c,
+      digit: UInt8(digit),
+      sticky: sticky,
+      rule
+    ) {
+      c &+= 1
+    }
+    return Self(sign: sign, exponentBitPattern: 6176, significandBitPattern: c)
+  }
+
+  /// Returns this value rounded to an integral value using the specified
+  /// rounding mode, accumulating status flags.
+  ///
+  /// For more information about the available rounding rules, see the
+  /// `FloatingPointRoundingRule` enumeration.
+  ///
+  /// This method implements the `roundToIntegralExact` operation as defined by
+  /// the IEEE 754 specification. If the result of rounding is inexact, then
+  /// `.inexact` will be inserted into `flags`.
+  ///
+  /// - Parameters:
+  ///   - rule: The rounding rule to use.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: The integral value found by rounding using `rule`.
+  @inlinable
+  public func rounded(
+    _ rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    if isSignalingNaN {
+      flags.insert(.invalid)
+      return _quiet._canonical
+    }
+    if exponentBitPattern >= 6176 { return _canonical }
+    if isZero { return _isSignMinus ? -Self() : Self() }
+
+    let n = Int(exponentBitPattern) &- 6176
+    var c = significandBitPattern
+    let digit: UInt128
+    let sticky: Bool
+    if n < -34 {
+      (c, digit) = (0, 0)
+      sticky = true
+    } else {
+      let (q, r) = c._quotientAndRemainder(dividingBy1e: -n &- 1)
+      (c, digit) = q.quotientAndRemainder(dividingBy: 10)
+      sticky = r != 0
+    }
+    let digit_ = UInt8(digit)
+    if Self._roundsAway(
+      isSignMinus: _isSignMinus,
+      significand: c,
+      digit: digit_,
+      sticky: sticky,
+      rule
+    ) {
+      c &+= 1
+    }
+    if digit != 0 || sticky { flags.insert(.inexact) }
+    return Self(sign: sign, exponentBitPattern: 6176, significandBitPattern: c)
   }
 
   @inline(always)
   public mutating func round(_ rule: FloatingPointRoundingRule) {
     self = rounded(rule)
+  }
+
+  @inline(always)
+  public mutating func round(
+    _ rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = rounded(rule, &flags)
   }
 }
 
