@@ -176,4 +176,17 @@ struct DecimalAnnexTests {
       trailingSignificandBitPattern: 1)
     #expect(z.description == "-1e+2")
   }
+
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testReadme() {
+    let x: Decimal128 = 1/10
+    let y: Decimal128 = 2/10
+    let comparison = x + y == 3/10
+    #expect(comparison)
+
+    var flags: DecimalFloatingPointStatusFlags = []
+    _ = (1 as Decimal128).divided(by: 3, rounding: .toNearestOrEven, &flags)
+    #expect(flags.contains(.inexact))
+  }
 }
