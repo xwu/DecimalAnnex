@@ -1771,8 +1771,100 @@ extension Decimal128: Strideable {
 
 @available(anyAppleOS 26.0, *)
 extension Decimal128 {
+  @inline(always)
   public init<T: BinaryInteger>(_ source: T) {
-    fatalError("Not implemented")
+    var flags: DecimalFloatingPointStatusFlags = []
+    self.init(source, &flags)
+  }
+
+  @inline(always)
+  public init<T: BinaryInteger>(
+    _ source: T,
+    rounding rule: FloatingPointRoundingRule
+  ) {
+    var flags: DecimalFloatingPointStatusFlags = []
+    self.init(source, rounding: rule, &flags)
+  }
+
+  @inlinable
+  public init<T: BinaryInteger>(
+    _ source: T,
+    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    let magnitude = source.magnitude
+    let isSignMinus = source < (0 as T)
+
+    if magnitude.bitWidth < 113 || magnitude < T.Magnitude(UInt128._1e34) {
+      bitPattern = 6176 &<< 113 | UInt128(truncatingIfNeeded: magnitude)
+      if isSignMinus { negate() }
+      return
+    }
+    if let c = UInt128(exactly: magnitude) {
+      let n = c._commonLogarithm &- 33
+      var e = 6176 &+ n
+      var (q, r) = c._quotientAndRemainder(dividingBy1e: n)
+      if r != 0 {
+        let half: UInt128 = unsafe ._exp10[unchecked: n] &>> 1
+        if Self._roundsAway(
+          isSignMinus: isSignMinus,
+          significand: q,
+          digit: r >= half ? 5 : 0,
+          sticky: r != half,
+          rule
+        ) {
+          if q == ._1e34 &- 1 {
+            q = ._1e33
+            e &+= 1
+          } else {
+            q &+= 1
+          }
+        }
+        flags.insert(.inexact)
+      }
+      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | q)
+      self = isSignMinus ? -abs : abs
+      return
+    }
+
+    // Determine bit width, excluding leading zero bits, using public APIs.
+    var bits = ((magnitude.bitWidth &- 1) / UInt.bitWidth) * UInt.bitWidth
+    var highWord = UInt(truncatingIfNeeded: magnitude >> bits)
+    while highWord == 0 {
+      bits &-= UInt.bitWidth
+      highWord = UInt(truncatingIfNeeded: magnitude >> bits)
+    }
+    bits += (UInt.bitWidth &- highWord.leadingZeroBitCount)
+
+    guard bits <= 20414 else {
+      self = ._overflow(isSignMinus: isSignMinus, rule, &flags)
+      return
+    }
+    // Underestimate floor(log10), off by at most one, then choose `k`, a
+    // multiple of 32 such that `magnitude / 10**k` retains 35 to 67 digits.
+    let underestimate = (1233 &* (bits &- 1)) &>> 12
+    let k = (underestimate &- 34) & ~31
+    // Build `5**k` from `5**32` using exponentiation by squaring.
+    var n = k &>> 5 // `k / 32`.
+    var divisor: T.Magnitude = 1
+    var power = T.Magnitude(UInt128._exp10[32] &>> 32) // `5**32`.
+    while n != 0 {
+      if n & 1 != 0 { divisor *= power }
+      n &>>= 1
+      if n != 0 { power *= power }
+    }
+    // Compute `magnitude / 10**k = (magnitude >> k) / 5**k`.
+    let (q, r) = (magnitude >> k).quotientAndRemainder(dividingBy: divisor)
+    let sticky = r != 0 || magnitude.trailingZeroBitCount < k
+    self = ._pack(
+      isSignMinus: isSignMinus,
+      biasedExponent: 6176 &+ k,
+      significand:
+        (UInt128(truncatingIfNeeded: q >> 128), UInt128(truncatingIfNeeded: q)),
+      sticky: sticky,
+      preferredBiasedExponent: 6176,
+      rule,
+      &flags)
   }
 
 #if false
