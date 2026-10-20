@@ -1745,15 +1745,11 @@ extension Decimal128: Numeric {
     lhs = lhs * rhs
   }
 
-  @inlinable
+  @inline(always)
   public init?<T: BinaryInteger>(exactly source: T) {
-    let magnitude = source.magnitude
-    guard magnitude.bitWidth < 113 || magnitude < UInt128._1e34 else {
-      fatalError("Potentially inexact integer conversion not implemented")
-    }
-    bitPattern = UInt128(truncatingIfNeeded: magnitude)
-    bitPattern |= Self().bitPattern
-    if source < (0 as T) { self.negate() }
+    var flags: DecimalFloatingPointStatusFlags = []
+    self.init(source, &flags)
+    if flags.contains(.inexact) { return nil }
   }
 }
 
@@ -1796,7 +1792,8 @@ extension Decimal128 {
     let isSignMinus = source < (0 as T)
 
     if magnitude.bitWidth < 113 || magnitude < T.Magnitude(UInt128._1e34) {
-      bitPattern = 6176 &<< 113 | UInt128(truncatingIfNeeded: magnitude)
+      bitPattern = UInt128(truncatingIfNeeded: magnitude)
+      bitPattern |= Self().bitPattern
       if isSignMinus { negate() }
       return
     }
