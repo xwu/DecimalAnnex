@@ -362,6 +362,32 @@ extension Decimal128 {
   }
 }
 
+@usableFromInline
+@objc
+internal enum _DecimalFloatingPointRoundingRule: UInt8 {
+  case toNearestOrEven = 0
+  case toNearestOrAwayFromZero = 1
+  case towardZero = 2
+  case awayFromZero = 3
+  case down = 4
+  case up = 5
+
+  @inlinable
+  @inline(always)
+  internal init(_ rule: FloatingPointRoundingRule) {
+    self =
+      switch rule {
+      case .toNearestOrEven: .toNearestOrEven
+      case .toNearestOrAwayFromZero: .toNearestOrAwayFromZero
+      case .towardZero: .towardZero
+      case .awayFromZero: .awayFromZero
+      case .down: .down
+      case .up: .up
+      @unknown default: fatalError("Unknown rounding rule.")
+      }
+  }
+}
+
 @available(anyAppleOS 26.0, *)
 extension Decimal128 {
   @inlinable
@@ -487,37 +513,10 @@ extension Decimal128 {
       significandBitPattern: 1)
   }
 
-  @inline(always)
-  public mutating func quantize(
-    by other: Decimal128,
-    rounding rule: FloatingPointRoundingRule
-  ) {
-    var flags: DecimalFloatingPointStatusFlags = []
-    quantize(by: other, rounding: rule, &flags)
-  }
-
-  @inline(always)
-  public mutating func quantize(
-    by other: Decimal128,
-    rounding rule: FloatingPointRoundingRule,
-    _ flags: inout DecimalFloatingPointStatusFlags
-  ) {
-    self = quantized(by: other, rounding: rule, &flags)
-  }
-
-  @inline(always)
-  public func quantized(
-    by other: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
-  ) -> Decimal128 {
-    var flags: DecimalFloatingPointStatusFlags = []
-    return quantized(by: other, rounding: rule, &flags)
-  }
-
   @inlinable
-  public func quantized(
+  internal func _quantized(
     by other: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
+    rounding rule: _DecimalFloatingPointRoundingRule,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
     guard isFinite && other.isFinite else {
@@ -583,6 +582,68 @@ extension Decimal128 {
       if digit_ != 0 || sticky { flags.insert(.inexact) }
     }
     return Self(sign: sign, exponentBitPattern: oe, significandBitPattern: c)
+  }
+
+  @inline(always)
+  public func quantized(by other: Decimal128) -> Decimal128 {
+    var flags: DecimalFloatingPointStatusFlags = []
+    return _quantized(by: other, rounding: .toNearestOrEven, &flags)
+  }
+
+  @inline(always)
+  public func quantized(
+    by other: Decimal128,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    _quantized(by: other, rounding: .toNearestOrEven, &flags)
+  }
+
+  @inline(always)
+  public func quantized(
+    by other: Decimal128,
+    rounding rule: FloatingPointRoundingRule
+  ) -> Decimal128 {
+    var flags: DecimalFloatingPointStatusFlags = []
+    return _quantized(by: other, rounding: .init(rule), &flags)
+  }
+
+  @inline(always)
+  public func quantized(
+    by other: Decimal128,
+    rounding rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    _quantized(by: other, rounding: .init(rule), &flags)
+  }
+
+  @inline(always)
+  public mutating func quantize(by other: Decimal128) {
+    self = quantized(by: other)
+  }
+
+  @inline(always)
+  public mutating func quantize(
+    by other: Decimal128,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = quantized(by: other, &flags)
+  }
+
+  @inline(always)
+  public mutating func quantize(
+    by other: Decimal128,
+    rounding rule: FloatingPointRoundingRule
+  ) {
+    self = quantized(by: other, rounding: rule)
+  }
+
+  @inline(always)
+  public mutating func quantize(
+    by other: Decimal128,
+    rounding rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = quantized(by: other, rounding: rule, &flags)
   }
 
   /// Returns a Boolean value indicating whether this value has the same quantum
@@ -918,7 +979,7 @@ extension Decimal128: AdditiveArithmetic {
     significand: UInt128,
     digit: UInt8,
     sticky: Bool,
-    _ rule: FloatingPointRoundingRule
+    _ rule: _DecimalFloatingPointRoundingRule
   ) -> Bool {
     assert(digit < 10)
     guard digit != 0 || sticky else { return false }
@@ -927,11 +988,16 @@ extension Decimal128: AdditiveArithmetic {
       return digit > 5 || (digit == 5 && (sticky || (significand & 1) != 0))
     case .toNearestOrAwayFromZero:
       return digit >= 5
-    case .up: return !isSignMinus
-    case .down: return isSignMinus
-    case .awayFromZero: return true
-    case .towardZero: return false
-    @unknown default: fatalError("Unknown rounding rule.")
+    case .towardZero:
+      return false
+    case .awayFromZero:
+      return true
+    case .down:
+      return isSignMinus
+    case .up:
+      return !isSignMinus
+    @unknown default:
+      fatalError("Unknown rounding rule.")
     }
   }
 
@@ -939,17 +1005,17 @@ extension Decimal128: AdditiveArithmetic {
   @inline(always)
   internal static func _overflow(
     isSignMinus: Bool,
-    _ rule: FloatingPointRoundingRule,
+    _ rule: _DecimalFloatingPointRoundingRule,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
     let infinite: Bool =
       switch rule {
       case .toNearestOrEven: true
       case .toNearestOrAwayFromZero: true
-      case .up: !isSignMinus
-      case .down: isSignMinus
-      case .awayFromZero: true
       case .towardZero: false
+      case .awayFromZero: true
+      case .down: isSignMinus
+      case .up: !isSignMinus
       @unknown default: fatalError("Unknown rounding rule.")
       }
     let magnitude: Self = infinite ? .infinity : .greatestFiniteMagnitude
@@ -966,7 +1032,7 @@ extension Decimal128: AdditiveArithmetic {
       significand: (high: UInt128, low: UInt128),
       sticky: Bool = false,
       preferredBiasedExponent: Int? = nil,
-      _ rule: FloatingPointRoundingRule,
+      _ rule: _DecimalFloatingPointRoundingRule,
       _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
     var e = biasedExponent
@@ -1118,17 +1184,17 @@ extension Decimal128: AdditiveArithmetic {
     // Inexact.
     let nextAway: Bool =
       switch rule {
+      case .toNearestOrEven:
+        rem > (divisor &>> 1) ||
+          (rem == (divisor &>> 1) && (sticky || (quo & 1) != 0))
+      case .toNearestOrAwayFromZero:
+        rem >= (divisor &>> 1)
+      case .towardZero:
+        false
       case .awayFromZero:
         true
       case .down:
         isSignMinus
-      case .toNearestOrAwayFromZero:
-        rem >= (divisor &>> 1)
-      case .toNearestOrEven:
-        rem > (divisor &>> 1) ||
-          (rem == (divisor &>> 1) && (sticky || (quo & 1) != 0))
-      case .towardZero:
-        false
       case .up:
         !isSignMinus
       @unknown default:
@@ -1155,28 +1221,10 @@ extension Decimal128: AdditiveArithmetic {
     return isSignMinus ? -abs : abs
   }
 
-  /// Returns the result of adding the given value to this value,
-  /// rounding to a representable value if needed with the given rounding rule.
-  ///
-  /// This method implements the `addition` operation defined by the
-  /// IEEE 754 specification.
-  ///
-  /// - Parameters:
-  ///   - rhs: The value to add to this value.
-  ///   - rule: The rounding rule for computing an inexact result.
-  @inline(always)
-  public func adding(
-    _ rhs: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
-  ) -> Decimal128 {
-    var flags: DecimalFloatingPointStatusFlags = []
-    return adding(rhs, rounding: rule, &flags)
-  }
-
   @inlinable
-  public func adding(
+  internal func _adding(
     _ rhs: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
+    rounding rule: _DecimalFloatingPointRoundingRule,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
     var lhs = self, rhs = rhs
@@ -1326,16 +1374,16 @@ extension Decimal128: AdditiveArithmetic {
         let half = divisor &>> 1
         let nextAway: Bool =
           switch rule {
+          case .toNearestOrEven:
+            r > half || (r == half && (sticky || (q & 1) != 0))
+          case .toNearestOrAwayFromZero:
+            r >= half
+          case .towardZero:
+            false
           case .awayFromZero:
             true
           case .down:
             isSignMinus
-          case .toNearestOrAwayFromZero:
-            r >= half
-          case .toNearestOrEven:
-            r > half || (r == half && (sticky || (q & 1) != 0))
-          case .towardZero:
-            false
           case .up:
             !isSignMinus
           @unknown default:
@@ -1380,14 +1428,14 @@ extension Decimal128: AdditiveArithmetic {
       if isSignMinus == rhs._isSignMinus {
         let nextAway: Bool =
           switch rule {
+          case .toNearestOrEven, .toNearestOrAwayFromZero:
+            false
+          case .towardZero:
+            false
           case .awayFromZero:
             true
           case .down:
             isSignMinus
-          case .toNearestOrAwayFromZero, .toNearestOrEven:
-            false
-          case .towardZero:
-            false
           case .up:
             !isSignMinus
           @unknown default:
@@ -1408,15 +1456,15 @@ extension Decimal128: AdditiveArithmetic {
       } else {
         let nextToward: Bool =
           switch rule {
-          case .awayFromZero:
-            false
-          case .down:
-            !isSignMinus
-          case .toNearestOrAwayFromZero, .toNearestOrEven:
+          case .toNearestOrEven, .toNearestOrAwayFromZero:
             unsafe delta == 35 &&
               c1 == ._1e33 && c2 > 5 &* ._exp10[unchecked: logc2]
           case .towardZero:
             true
+          case .awayFromZero:
+            false
+          case .down:
+            !isSignMinus
           case .up:
             isSignMinus
           @unknown default:
@@ -1480,29 +1528,6 @@ extension Decimal128: AdditiveArithmetic {
       &flags)
   }
 
-  /// Adds the given value to this value in place,
-  /// rounding to a representable value if needed with the given rounding rule.
-  ///
-  /// - Parameters:
-  ///   - rhs: The value to add to this value.
-  ///   - rule: The rounding rule for computing an inexact result.
-  @inline(always)
-  public mutating func add(
-    _ rhs: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
-  ) {
-    self = adding(rhs, rounding: rule)
-  }
-
-  @inline(always)
-  public mutating func add(
-    _ rhs: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
-    _ flags: inout DecimalFloatingPointStatusFlags
-  ) {
-    self = adding(rhs, rounding: rule, &flags)
-  }
-
   /// Adds two values and produces their sum,
   /// rounding to a representable value if needed.
   ///
@@ -1514,7 +1539,43 @@ extension Decimal128: AdditiveArithmetic {
   ///   - rhs: The second value to add.
   @inline(always)
   public static func + (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
-    lhs.adding(rhs)
+    var flags: DecimalFloatingPointStatusFlags = []
+    return lhs._adding(rhs, rounding: .toNearestOrEven, &flags)
+  }
+
+  @inline(always)
+  public func adding(
+    _ rhs: Decimal128,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    _adding(rhs, rounding: .toNearestOrEven, &flags)
+  }
+
+  /// Returns the result of adding the given value to this value,
+  /// rounding to a representable value if needed with the given rounding rule.
+  ///
+  /// This method implements the `addition` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value to add to this value.
+  ///   - rule: The rounding rule for computing an inexact result.
+  @inline(always)
+  public func adding(
+    _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule
+  ) -> Decimal128 {
+    var flags: DecimalFloatingPointStatusFlags = []
+    return _adding(rhs, rounding: .init(rule), &flags)
+  }
+
+  @inline(always)
+  public func adding(
+    _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    _adding(rhs, rounding: .init(rule), &flags)
   }
 
   /// Adds two values and stores the result in the left-hand-side variable,
@@ -1526,6 +1587,60 @@ extension Decimal128: AdditiveArithmetic {
   @inline(always)
   public static func += (lhs: inout Decimal128, rhs: Decimal128) {
     lhs = lhs + rhs
+  }
+
+  @inline(always)
+  public mutating func add(
+    _ rhs: Decimal128,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = adding(rhs, &flags)
+  }
+
+  /// Adds the given value to this value in place,
+  /// rounding to a representable value if needed with the given rounding rule.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value to add to this value.
+  ///   - rule: The rounding rule for computing an inexact result.
+  @inline(always)
+  public mutating func add(
+    _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule
+  ) {
+    self = adding(rhs, rounding: rule)
+  }
+
+  @inline(always)
+  public mutating func add(
+    _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = adding(rhs, rounding: rule, &flags)
+  }
+
+  /// Subtracts one value from another and produces their difference,
+  /// rounding to a representable value if needed.
+  ///
+  /// This method implements the `subtraction` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - lhs: A numeric value.
+  ///   - rhs: The value to subtract from `lhs`.
+  @inline(always)
+  public static func - (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
+    var flags: DecimalFloatingPointStatusFlags = []
+    return lhs._adding(-rhs, rounding: .toNearestOrEven, &flags)
+  }
+
+  @inline(always)
+  public func subtracting(
+    _ rhs: Decimal128,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    _adding(-rhs, rounding: .toNearestOrEven, &flags)
   }
 
   /// Returns the result of subtracting the given value from this value,
@@ -1540,56 +1655,19 @@ extension Decimal128: AdditiveArithmetic {
   @inline(always)
   public func subtracting(
     _ rhs: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+    rounding rule: FloatingPointRoundingRule
   ) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
-    return adding(-rhs, rounding: rule, &flags)
+    return _adding(-rhs, rounding: .init(rule), &flags)
   }
 
   @inline(always)
   public func subtracting(
     _ rhs: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
+    rounding rule: FloatingPointRoundingRule,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
-    return adding(-rhs, rounding: rule, &flags)
-  }
-
-  /// Subtracts the given value from this value in place,
-  /// rounding to a representable value if needed with the given rounding rule.
-  ///
-  /// - Parameters:
-  ///   - rhs: The value to subtract from this value.
-  ///   - rule: The rounding rule to use for computing an inexact result.
-  @inline(always)
-  public mutating func subtract(
-    _ rhs: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
-  ) {
-    self = subtracting(rhs, rounding: rule)
-  }
-
-  @inline(always)
-  public mutating func subtract(
-    _ rhs: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
-    _ flags: inout DecimalFloatingPointStatusFlags
-  ) {
-    self = subtracting(rhs, rounding: rule, &flags)
-  }
-
-  /// Subtracts one value from another and produces their difference,
-  /// rounding to a representable value if needed.
-  ///
-  /// This method implements the `subtraction` operation defined by the
-  /// IEEE 754 specification.
-  ///
-  /// - Parameters:
-  ///   - lhs: A numeric value.
-  ///   - rhs: The value to subtract from `lhs`.
-  @inline(always)
-  public static func - (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
-    lhs.subtracting(rhs)
+    _adding(-rhs, rounding: .init(rule), &flags)
   }
 
   /// Subtracts the second value from the first and stores the difference in the
@@ -1602,32 +1680,45 @@ extension Decimal128: AdditiveArithmetic {
   public static func -= (lhs: inout Decimal128, rhs: Decimal128) {
     lhs = lhs - rhs
   }
+
+  @inline(always)
+  public mutating func subtract(
+    _ rhs: Decimal128,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = subtracting(rhs, &flags)
+  }
+
+  /// Subtracts the given value from this value in place,
+  /// rounding to a representable value if needed with the given rounding rule.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value to subtract from this value.
+  ///   - rule: The rounding rule to use for computing an inexact result.
+  @inline(always)
+  public mutating func subtract(
+    _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule
+  ) {
+    self = subtracting(rhs, rounding: rule)
+  }
+
+  @inline(always)
+  public mutating func subtract(
+    _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = subtracting(rhs, rounding: rule, &flags)
+  }
 }
 
 @available(anyAppleOS 26.0, *)
 extension Decimal128: Numeric {
-  /// Returns the result of multiplying this value by the given value,
-  /// rounding to a representable value if needed with the given rounding rule.
-  ///
-  /// This method implements the `multiplication` operation defined by the
-  /// IEEE 754 specification.
-  ///
-  /// - Parameters:
-  ///   - rhs: The value by which to multiply this value.
-  ///   - rule: The rounding rule to use for computing an inexact result.
-  @inline(always)
-  public func multiplied(
-    by rhs: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
-  ) -> Decimal128 {
-    var flags: DecimalFloatingPointStatusFlags = []
-    return multiplied(by: rhs, rounding: rule, &flags)
-  }
-
   @inlinable
-  public func multiplied(
+  internal func _multiplied(
     by rhs: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
+    rounding rule: _DecimalFloatingPointRoundingRule,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
     var lhs = self, rhs = rhs
@@ -1697,29 +1788,6 @@ extension Decimal128: Numeric {
       &flags)
   }
 
-  /// Multiplies this value by the given value in place, rounding to a
-  /// representable value if needed with the given rounding rule.
-  ///
-  /// - Parameters:
-  ///   - rhs: The value by which to multiply this value.
-  ///   - rule: The rounding rule to use for computing an inexact result.
-  @inline(always)
-  public mutating func multiply(
-    by rhs: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
-  ) {
-    self = multiplied(by: rhs, rounding: rule)
-  }
-
-  @inline(always)
-  public mutating func multiply(
-    by rhs: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
-    _ flags: inout DecimalFloatingPointStatusFlags
-  ) {
-    self = multiplied(by: rhs, rounding: rule, &flags)
-  }
-
   /// Multiplies two values and produces their product,
   /// rounding to a representable value if needed.
   ///
@@ -1731,7 +1799,43 @@ extension Decimal128: Numeric {
   ///   - rhs: The second value to multiply.
   @inline(always)
   public static func * (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
-    lhs.multiplied(by: rhs)
+    var flags: DecimalFloatingPointStatusFlags = []
+    return lhs._multiplied(by: rhs, rounding: .toNearestOrEven, &flags)
+  }
+
+  @inline(always)
+  public func multiplied(
+    by rhs: Decimal128,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    _multiplied(by: rhs, rounding: .toNearestOrEven, &flags)
+  }
+
+  /// Returns the result of multiplying this value by the given value,
+  /// rounding to a representable value if needed with the given rounding rule.
+  ///
+  /// This method implements the `multiplication` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value by which to multiply this value.
+  ///   - rule: The rounding rule to use for computing an inexact result.
+  @inline(always)
+  public func multiplied(
+    by rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule
+  ) -> Decimal128 {
+    var flags: DecimalFloatingPointStatusFlags = []
+    return _multiplied(by: rhs, rounding: .init(rule), &flags)
+  }
+
+  @inline(always)
+  public func multiplied(
+    by rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    _multiplied(by: rhs, rounding: .init(rule), &flags)
   }
 
   /// Multiplies two values and stores the result in the left-hand-side
@@ -1746,46 +1850,40 @@ extension Decimal128: Numeric {
   }
 
   @inline(always)
-  public init?<T: BinaryInteger>(exactly source: T) {
-    var flags: DecimalFloatingPointStatusFlags = []
-    self.init(source, &flags)
-    if flags.contains(.inexact) { return nil }
-  }
-}
-
-@available(anyAppleOS 26.0, *)
-extension Decimal128: SignedNumeric { }
-
-@available(anyAppleOS 26.0, *)
-extension Decimal128: Strideable {
-  @inlinable
-  public func distance(to other: Decimal128) -> Decimal128 { other - self }
-
-  @inlinable
-  public func advanced(by n: Decimal128) -> Decimal128 { self + n }
-}
-
-@available(anyAppleOS 26.0, *)
-extension Decimal128 {
-  @inline(always)
-  public init<T: BinaryInteger>(_ source: T) {
-    var flags: DecimalFloatingPointStatusFlags = []
-    self.init(source, &flags)
+  public mutating func multiply(
+    by rhs: Decimal128,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = multiplied(by: rhs, &flags)
   }
 
+  /// Multiplies this value by the given value in place, rounding to a
+  /// representable value if needed with the given rounding rule.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value by which to multiply this value.
+  ///   - rule: The rounding rule to use for computing an inexact result.
   @inline(always)
-  public init<T: BinaryInteger>(
-    _ source: T,
+  public mutating func multiply(
+    by rhs: Decimal128,
     rounding rule: FloatingPointRoundingRule
   ) {
-    var flags: DecimalFloatingPointStatusFlags = []
-    self.init(source, rounding: rule, &flags)
+    self = multiplied(by: rhs, rounding: rule)
+  }
+
+  @inline(always)
+  public mutating func multiply(
+    by rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = multiplied(by: rhs, rounding: rule, &flags)
   }
 
   @inlinable
-  public init<T: BinaryInteger>(
+  internal init<T: BinaryInteger>(
     _ source: T,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
+    _rounding rule: _DecimalFloatingPointRoundingRule,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) {
     let magnitude = source.magnitude
@@ -1862,6 +1960,60 @@ extension Decimal128 {
       preferredBiasedExponent: 6176,
       rule,
       &flags)
+  }
+
+  @inline(always)
+  public init?<T: BinaryInteger>(exactly source: T) {
+    var flags: DecimalFloatingPointStatusFlags = []
+    self.init(source, _rounding: .toNearestOrEven, &flags)
+    if flags.contains(.inexact) { return nil }
+  }
+}
+
+@available(anyAppleOS 26.0, *)
+extension Decimal128: SignedNumeric { }
+
+@available(anyAppleOS 26.0, *)
+extension Decimal128: Strideable {
+  @inlinable
+  public func distance(to other: Decimal128) -> Decimal128 { other - self }
+
+  @inlinable
+  public func advanced(by n: Decimal128) -> Decimal128 { self + n }
+}
+
+@available(anyAppleOS 26.0, *)
+extension Decimal128 {
+  @inline(always)
+  public init<T: BinaryInteger>(_ source: T) {
+    var flags: DecimalFloatingPointStatusFlags = []
+    self.init(source, _rounding: .toNearestOrEven, &flags)
+  }
+
+  @inline(always)
+  public init<T: BinaryInteger>(
+    _ source: T,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self.init(source, _rounding: .toNearestOrEven, &flags)
+  }
+
+  @inline(always)
+  public init<T: BinaryInteger>(
+    _ source: T,
+    rounding rule: FloatingPointRoundingRule
+  ) {
+    var flags: DecimalFloatingPointStatusFlags = []
+    self.init(source, _rounding: .init(rule), &flags)
+  }
+
+  @inline(always)
+  public init<T: BinaryInteger>(
+    _ source: T,
+    rounding rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self.init(source, _rounding: .init(rule), &flags)
   }
 
 #if false
@@ -1960,11 +2112,32 @@ extension Decimal128: FloatingPoint {
     return lhs.significandBitPattern <= rhs.significandBitPattern
   }
 
+  @usableFromInline
+  internal func _addingProduct(
+    _ lhs: Decimal128, _ rhs: Decimal128,
+    rounding rule: _DecimalFloatingPointRoundingRule
+  ) -> Decimal128 {
+    fatalError("Not implemented")
+  }
+
+  @inline(always)
+  public func addingProduct(
+    _ lhs: Decimal128, _ rhs: Decimal128
+  ) -> Decimal128 {
+    _addingProduct(lhs, rhs, rounding: .toNearestOrEven)
+  }
+
+  @inline(always)
   public func addingProduct(
     _ lhs: Decimal128, _ rhs: Decimal128,
     rounding rule: FloatingPointRoundingRule
   ) -> Decimal128 {
-    fatalError("Not implemented")
+    _addingProduct(lhs, rhs, rounding: .init(rule))
+  }
+
+  @inline(always)
+  public mutating func addProduct(_ lhs: Decimal128, _ rhs: Decimal128) {
+    self = addingProduct(lhs, rhs)
   }
 
   @inline(always)
@@ -1975,31 +2148,10 @@ extension Decimal128: FloatingPoint {
     self = addingProduct(lhs, rhs, rounding: rule)
   }
 
-  @inline(always)
-  public func addingProduct(
-    _ lhs: Decimal128, _ rhs: Decimal128
-  ) -> Decimal128 {
-    addingProduct(lhs, rhs, rounding: .toNearestOrEven)
-  }
-
-  @inline(always)
-  public mutating func addProduct(_ lhs: Decimal128, _ rhs: Decimal128) {
-    self = addingProduct(lhs, rhs)
-  }
-
-  @inline(always)
-  public func divided(
-    by rhs: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
-  ) -> Decimal128 {
-    var flags: DecimalFloatingPointStatusFlags = []
-    return divided(by: rhs, rounding: rule, &flags)
-  }
-
   @inlinable
-  public func divided(
+  internal func _divided(
     by rhs: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
+    rounding rule: _DecimalFloatingPointRoundingRule,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
     var lhs = self, rhs = rhs
@@ -2268,9 +2420,54 @@ extension Decimal128: FloatingPoint {
   }
 
   @inline(always)
+  public static func / (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
+    var flags: DecimalFloatingPointStatusFlags = []
+    return lhs._divided(by: rhs, rounding: .toNearestOrEven, &flags)
+  }
+
+  @inline(always)
+  public func divided(
+    by rhs: Decimal128,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    _divided(by: rhs, rounding: .toNearestOrEven, &flags)
+  }
+
+  @inline(always)
+  public func divided(
+    by rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule
+  ) -> Decimal128 {
+    var flags: DecimalFloatingPointStatusFlags = []
+    return _divided(by: rhs, rounding: .init(rule), &flags)
+  }
+
+  @inline(always)
+  public func divided(
+    by rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    _divided(by: rhs, rounding: .init(rule), &flags)
+  }
+
+  @inline(always)
+  public static func /= (lhs: inout Decimal128, rhs: Decimal128) {
+    lhs = lhs / rhs
+  }
+
+  @inline(always)
   public mutating func divide(
     by rhs: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = divided(by: rhs, &flags)
+  }
+
+  @inline(always)
+  public mutating func divide(
+    by rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule
   ) {
     self = divided(by: rhs, rounding: rule)
   }
@@ -2278,20 +2475,10 @@ extension Decimal128: FloatingPoint {
   @inline(always)
   public mutating func divide(
     by rhs: Decimal128,
-    rounding rule: FloatingPointRoundingRule = .toNearestOrEven,
+    rounding rule: FloatingPointRoundingRule,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) {
     self = divided(by: rhs, rounding: rule, &flags)
-  }
-
-  @inline(always)
-  public static func / (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
-    lhs.divided(by: rhs)
-  }
-
-  @inline(always)
-  public static func /= (lhs: inout Decimal128, rhs: Decimal128) {
-    lhs = lhs / rhs
   }
 
   public func remainder(dividingBy other: Decimal128) -> Decimal128 {
@@ -2312,10 +2499,28 @@ extension Decimal128: FloatingPoint {
     self = truncatingRemainder(dividingBy: other)
   }
 
+  @usableFromInline
+  internal func _squareRoot(
+    rounding rule: _DecimalFloatingPointRoundingRule
+  ) -> Decimal128 {
+    fatalError("Not implemented")
+  }
+
+  @inline(always)
+  public func squareRoot() -> Decimal128 {
+    _squareRoot(rounding: .toNearestOrEven)
+  }
+
+  @inline(always)
   public func squareRoot(
     rounding rule: FloatingPointRoundingRule
   ) -> Decimal128 {
-    fatalError("Not implemented")
+    _squareRoot(rounding: .init(rule))
+  }
+
+  @inline(always)
+  public mutating func formSquareRoot() {
+    self = squareRoot()
   }
 
   @inline(always)
@@ -2325,18 +2530,10 @@ extension Decimal128: FloatingPoint {
     self = squareRoot(rounding: rule)
   }
 
-  @inline(always)
-  public func squareRoot() -> Decimal128 {
-    squareRoot(rounding: .toNearestOrEven)
-  }
-
-  @inline(always)
-  public mutating func formSquareRoot() {
-    self = squareRoot()
-  }
-
   @inlinable
-  public func rounded(_ rule: FloatingPointRoundingRule) -> Decimal128 {
+  internal func _rounded(
+    _ rule: _DecimalFloatingPointRoundingRule
+  ) -> Decimal128 {
     if isSignalingNaN {
       _signal(.invalid)
       return _quiet._canonical
@@ -2368,24 +2565,29 @@ extension Decimal128: FloatingPoint {
     return Self(sign: sign, exponentBitPattern: 6176, significandBitPattern: c)
   }
 
-  /// Returns this value rounded to an integral value using the specified
-  /// rounding mode, accumulating status flags.
-  ///
-  /// For more information about the available rounding rules, see the
-  /// `FloatingPointRoundingRule` enumeration.
-  ///
-  /// This method implements the `roundToIntegralExact` operation as defined by
-  /// the IEEE 754 specification. If the result of rounding is inexact, then
-  /// `.inexact` will be inserted into `flags`.
-  ///
-  /// - Parameters:
-  ///   - rule: The rounding rule to use.
-  ///   - flags: A value that accumulates decimal floating-point arithmetic
-  ///     status flags.
-  /// - Returns: The integral value found by rounding using `rule`.
+  @inline(always)
+  public func rounded() -> Decimal128 {
+    _rounded(.toNearestOrAwayFromZero)
+  }
+
+  @inline(always)
+  public func rounded(_ rule: FloatingPointRoundingRule) -> Decimal128 {
+    _rounded(.init(rule))
+  }
+
+  @inline(always)
+  public mutating func round() {
+    self = rounded()
+  }
+
+  @inline(always)
+  public mutating func round(_ rule: FloatingPointRoundingRule) {
+    self = rounded(rule)
+  }
+
   @inlinable
-  public func rounded(
-    _ rule: FloatingPointRoundingRule,
+  internal func _rounded(
+    _ rule: _DecimalFloatingPointRoundingRule,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
     if isSignalingNaN {
@@ -2422,8 +2624,38 @@ extension Decimal128: FloatingPoint {
   }
 
   @inline(always)
-  public mutating func round(_ rule: FloatingPointRoundingRule) {
-    self = rounded(rule)
+  public func rounded(
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    _rounded(.toNearestOrAwayFromZero, &flags)
+  }
+
+  /// Returns this value rounded to an integral value using the specified
+  /// rounding mode, accumulating status flags.
+  ///
+  /// For more information about the available rounding rules, see the
+  /// `FloatingPointRoundingRule` enumeration.
+  ///
+  /// This method implements the `roundToIntegralExact` operation as defined by
+  /// the IEEE 754 specification. If the result of rounding is inexact, then
+  /// `.inexact` will be inserted into `flags`.
+  ///
+  /// - Parameters:
+  ///   - rule: The rounding rule to use.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: The integral value found by rounding using `rule`.
+  @inline(always)
+  public func rounded(
+    _ rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    _rounded(.init(rule), &flags)
+  }
+
+  @inline(always)
+  public mutating func round(_ flags: inout DecimalFloatingPointStatusFlags) {
+    self = rounded(&flags)
   }
 
   @inline(always)
