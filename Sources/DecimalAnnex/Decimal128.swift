@@ -497,7 +497,7 @@ extension Decimal128 {
   ) -> Decimal128 {
     guard isFinite else {
       if isSignalingNaN {
-        flags.insert(.invalid)
+        _signal(.invalid, into: &flags)
         return _quiet._canonical
       }
       if isNaN {
@@ -521,11 +521,11 @@ extension Decimal128 {
   ) -> Decimal128 {
     guard isFinite && other.isFinite else {
       if isSignalingNaN {
-        flags.insert(.invalid)
+        _signal(.invalid, into: &flags)
         return _quiet._canonical
       }
       if other.isSignalingNaN {
-        flags.insert(.invalid)
+        _signal(.invalid, into: &flags)
         return other._quiet._canonical
       }
 
@@ -539,7 +539,7 @@ extension Decimal128 {
       if isInfinite && other.isFinite {
         return _isSignMinus ? -.infinity : .infinity
       }
-      flags.insert(.invalid)
+      _signal(.invalid, into: &flags)
       return .nan
     }
     let oe = other.exponentBitPattern
@@ -550,7 +550,7 @@ extension Decimal128 {
     var c = significandBitPattern
     if n >= 0 {
       guard n <= 33 - c._commonLogarithm else {
-        flags.insert(.invalid)
+        _signal(.invalid, into: &flags)
         return .nan
       }
       c &*= unsafe ._exp10[unchecked: n]
@@ -576,10 +576,10 @@ extension Decimal128 {
         c &+= 1
       }
       if c >= ._1e34 {
-        flags.insert(.invalid)
+        _signal(.invalid, into: &flags)
         return .nan
       }
-      if digit_ != 0 || sticky { flags.insert(.inexact) }
+      if digit_ != 0 || sticky { _signal(.inexact, into: &flags) }
     }
     return Self(sign: sign, exponentBitPattern: oe, significandBitPattern: c)
   }
@@ -1019,7 +1019,7 @@ extension Decimal128: AdditiveArithmetic {
       @unknown default: fatalError("Unknown rounding rule.")
       }
     let magnitude: Self = infinite ? .infinity : .greatestFiniteMagnitude
-    flags.formUnion(.overflowInexact)
+    _signal(.overflowInexact, into: &flags)
     return isSignMinus ? -magnitude : magnitude
   }
 
@@ -1055,7 +1055,7 @@ extension Decimal128: AdditiveArithmetic {
         sticky: true,
         rule)
       let abs = Self(bitPattern: nextAway ? 1 : 0)
-      flags.formUnion(.underflowInexact)
+      _signal(.underflowInexact, into: &flags)
       return isSignMinus ? -abs : abs
     }
 
@@ -1203,7 +1203,7 @@ extension Decimal128: AdditiveArithmetic {
     if nextAway {
       if quo == ._1e34 &- 1 {
         if e == 12287 {
-          flags.formUnion(.overflowInexact)
+          _signal(.overflowInexact, into: &flags)
           return isSignMinus ? -.infinity : .infinity
         }
         quo = ._1e33
@@ -1214,9 +1214,9 @@ extension Decimal128: AdditiveArithmetic {
     }
     let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | quo)
     if isTiny {
-      flags.formUnion(.underflowInexact)
+      _signal(.underflowInexact, into: &flags)
     } else {
-      flags.insert(.inexact)
+      _signal(.inexact, into: &flags)
     }
     return isSignMinus ? -abs : abs
   }
@@ -1231,11 +1231,11 @@ extension Decimal128: AdditiveArithmetic {
 
     guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
       if lhs.isSignalingNaN {
-        flags.insert(.invalid)
+        _signal(.invalid, into: &flags)
         lhs = lhs._quiet
       }
       if rhs.isSignalingNaN {
-        flags.insert(.invalid)
+        _signal(.invalid, into: &flags)
         rhs = rhs._quiet
       }
       if lhs.isNaN {
@@ -1248,7 +1248,7 @@ extension Decimal128: AdditiveArithmetic {
       if lhs.isInfinite {
         let isSignMinus = lhs._isSignMinus
         if rhs.isInfinite && isSignMinus != rhs._isSignMinus {
-          flags.insert(.invalid)
+          _signal(.invalid, into: &flags)
           return .nan
         }
         return isSignMinus ? -.infinity : .infinity
@@ -1392,7 +1392,7 @@ extension Decimal128: AdditiveArithmetic {
         if nextAway {
           if q == ._1e34 &- 1 {
             if e == 12287 {
-              flags.formUnion(.overflowInexact)
+              _signal(.overflowInexact, into: &flags)
               return isSignMinus ? -.infinity : .infinity
             }
             q = ._1e33
@@ -1401,7 +1401,7 @@ extension Decimal128: AdditiveArithmetic {
             q &+= 1
           }
         }
-        flags.insert(.inexact)
+        _signal(.inexact, into: &flags)
       }
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | q)
       return isSignMinus ? -abs : abs
@@ -1444,7 +1444,7 @@ extension Decimal128: AdditiveArithmetic {
         if nextAway {
           if c1 == ._1e34 &- 1 {
             if e1 == 12287 {
-              flags.formUnion(.overflowInexact)
+              _signal(.overflowInexact, into: &flags)
               return isSignMinus ? -.infinity : .infinity
             }
             c1 = ._1e33
@@ -1486,9 +1486,9 @@ extension Decimal128: AdditiveArithmetic {
       }
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e1) &<< 113 | c1)
       if isTiny {
-        flags.formUnion(.underflowInexact)
+        _signal(.underflowInexact, into: &flags)
       } else {
-        flags.insert(.inexact)
+        _signal(.inexact, into: &flags)
       }
       return isSignMinus ? -abs : abs
     }
@@ -1726,11 +1726,11 @@ extension Decimal128: Numeric {
 
     guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
       if lhs.isSignalingNaN {
-        flags.insert(.invalid)
+        _signal(.invalid, into: &flags)
         lhs = lhs._quiet
       }
       if rhs.isSignalingNaN {
-        flags.insert(.invalid)
+        _signal(.invalid, into: &flags)
         rhs = rhs._quiet
       }
       if lhs.isNaN {
@@ -1742,14 +1742,14 @@ extension Decimal128: Numeric {
 
       if lhs.isInfinite {
         if rhs.isZero {
-          flags.insert(.invalid)
+          _signal(.invalid, into: &flags)
           return .nan
         }
         return isSignMinus ? -.infinity : .infinity
       }
       if rhs.isInfinite {
         if lhs.isZero {
-          flags.insert(.invalid)
+          _signal(.invalid, into: &flags)
           return .nan
         }
         return isSignMinus ? -.infinity : .infinity
@@ -1915,7 +1915,7 @@ extension Decimal128: Numeric {
             q &+= 1
           }
         }
-        flags.insert(.inexact)
+        _signal(.inexact, into: &flags)
       }
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | q)
       self = isSignMinus ? -abs : abs
@@ -2159,11 +2159,11 @@ extension Decimal128: FloatingPoint {
 
     guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
       if lhs.isSignalingNaN {
-        flags.insert(.invalid)
+        _signal(.invalid, into: &flags)
         lhs = lhs._quiet
       }
       if rhs.isSignalingNaN {
-        flags.insert(.invalid)
+        _signal(.invalid, into: &flags)
         rhs = rhs._quiet
       }
       if lhs.isNaN {
@@ -2175,7 +2175,7 @@ extension Decimal128: FloatingPoint {
 
       if lhs.isInfinite {
         if rhs.isInfinite {
-          flags.insert(.invalid)
+          _signal(.invalid, into: &flags)
           return .nan
         }
         return isSignMinus ? -.infinity : .infinity
@@ -2187,10 +2187,10 @@ extension Decimal128: FloatingPoint {
 
       if rhs.isZero {
         if lhs.isZero {
-          flags.insert(.invalid)
+          _signal(.invalid, into: &flags)
           return .nan
         }
-        flags.insert(.divisionByZero)
+        _signal(.divisionByZero, into: &flags)
         return isSignMinus ? -.infinity : .infinity
       }
       let e = Int(lhs.exponentBitPattern) &- Int(rhs.exponentBitPattern) &+ 6176
@@ -2382,7 +2382,7 @@ extension Decimal128: FloatingPoint {
       ) {
         if quo == ._1e34 &- 1 {
           if e == 12287 {
-            flags.formUnion(.overflowInexact)
+            _signal(.overflowInexact, into: &flags)
             return isSignMinus ? -.infinity : .infinity
           }
           quo = ._1e33
@@ -2391,7 +2391,7 @@ extension Decimal128: FloatingPoint {
           quo &+= 1
         }
       }
-      flags.insert(.inexact)
+      _signal(.inexact, into: &flags)
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | quo)
       return isSignMinus ? -abs : abs
     }
@@ -2414,7 +2414,7 @@ extension Decimal128: FloatingPoint {
     ) {
       quo &+= 1
     }
-    flags.formUnion(.underflowInexact)
+    _signal(.underflowInexact, into: &flags)
     let abs = Self(bitPattern: quo)
     return isSignMinus ? -abs : abs
   }
@@ -2591,7 +2591,7 @@ extension Decimal128: FloatingPoint {
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
     if isSignalingNaN {
-      flags.insert(.invalid)
+      _signal(.invalid, into: &flags)
       return _quiet._canonical
     }
     if exponentBitPattern >= 6176 { return _canonical }
@@ -2619,7 +2619,7 @@ extension Decimal128: FloatingPoint {
     ) {
       c &+= 1
     }
-    if digit != 0 || sticky { flags.insert(.inexact) }
+    if digit != 0 || sticky { _signal(.inexact, into: &flags) }
     return Self(sign: sign, exponentBitPattern: 6176, significandBitPattern: c)
   }
 

@@ -34,3 +34,11 @@ public struct DecimalFloatingPointStatusFlags:
 internal func _signal(_: DecimalFloatingPointStatusFlags) {
   // No-op (for now).
 }
+
+@inlinable
+internal func _signal(
+  _ status: DecimalFloatingPointStatusFlags,
+  into flags: inout DecimalFloatingPointStatusFlags
+) {
+  flags.formUnion(status)
+}
