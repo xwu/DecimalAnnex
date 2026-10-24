@@ -2233,7 +2233,12 @@ extension Decimal128: FloatingPoint {
     let n: Int
     var quo: UInt128
     let rem: UInt128
-    if lc >= rc {
+    // Fast path for division by powers of ten.
+    let ctz = UInt64(truncatingIfNeeded: rc).trailingZeroBitCount
+    if unsafe ctz <= 33 && rc == ._exp10[unchecked: ctz] {
+      n = ctz
+      (quo, rem) = (lc, 0)
+    } else if lc >= rc {
       let q, r: UInt128
       if lc &- rc < rc {
         (q, r) = (1, lc &- rc)
@@ -2275,12 +2280,35 @@ extension Decimal128: FloatingPoint {
               overestimate &-= 1
             }
             (q, r) = (overestimate, lc &- product)
+          } else if rc <= 0xFFFF_FFFF_FFFF_FFFF /* UInt64.max */ {
+            (q, r) = lc.quotientAndRemainder(dividingBy: rc)
           } else {
-            // Avoid less-than-ideal intrinsic performance.
-            (q, r) = rc <= 0xFFFF_FFFF_FFFF_FFFF /* UInt64.max */
-              ? lc.quotientAndRemainder(dividingBy: rc)
-              : UInt128._quotientAndRemainder(
-                  fullWidth: (0, lc), dividingBy: rc)
+            // Avoid less-than-ideal intrinsic performance,
+            // using `Double` to estimate.
+
+            // FIXME: Include an alternative implementation using integer math
+            // that leaves binary floating-point status flags unaffected which
+            // could be conditionally compiled in.
+            let x =
+              Double(UInt64(truncatingIfNeeded: lc &>> 64)) * 0x1p64
+                + Double(UInt64(truncatingIfNeeded: lc))
+            let y =
+              Double(UInt64(truncatingIfNeeded: rc &>> 64)) * 0x1p64
+                + Double(UInt64(truncatingIfNeeded: rc))
+            // Since the quotient is less than `2**49`, the integer part of the
+            // estimate needs at most one correction in either direction.
+            var q_ = UInt128(UInt64(x / y))
+            var p = q_ &* rc
+            if p > lc {
+              q_ &-= 1
+              p &-= rc
+            }
+            var r_ = lc &- p
+            if r_ >= rc {
+              q_ &+= 1
+              r_ &-= rc
+            }
+            (q, r) = (q_, r_)
           }
         }
       }
