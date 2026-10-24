@@ -1001,6 +1001,64 @@ extension Decimal128: AdditiveArithmetic {
     }
   }
 
+  /// Select the exact cohort closest to the preferred exponent.
+  @inlinable
+  @inline(always)
+  internal static func _select(
+    biasedExponent e: inout Int,
+    nonzeroSignificand quo: inout UInt128,
+    boundedPreferredBiasedExponent pe: Int
+  ) {
+    if e < pe {
+      if (quo & 1) == 0, let quo_ = quo._quotientIfExactDividingBy10() {
+        var delta = pe &- (e &+ 1)
+        quo = quo_
+        if delta >= 32 && (quo & 0xFFFFFFFF) == 0,
+            let quo_ = quo._quotientIfExactDividingBy1e32() {
+          delta &-= 32
+          quo = quo_
+        }
+        if delta >= 16 && (quo & 0xFFFF) == 0,
+            let quo_ = quo._quotientIfExactDividingBy1e16() {
+          delta &-= 16
+          quo = quo_
+        }
+        if delta >= 8 && (quo & 0xFF) == 0,
+            let quo_ = quo._quotientIfExactDividingBy1e8() {
+          delta &-= 8
+          quo = quo_
+        }
+        if delta >= 4 && (quo & 0xF) == 0,
+            let quo_ = quo._quotientIfExactDividingBy10000() {
+          delta &-= 4
+          quo = quo_
+        }
+        if delta >= 2 && (quo & 0x3) == 0,
+            let quo_ = quo._quotientIfExactDividingBy100() {
+          delta &-= 2
+          quo = quo_
+        }
+        if delta >= 1 && (quo & 1) == 0,
+            let quo_ = quo._quotientIfExactDividingBy10() {
+          delta &-= 1
+          quo = quo_
+        }
+        e = pe &- delta
+      }
+    } else if e > pe {
+      let estimate = ((19 &* (127 &- quo.leadingZeroBitCount)) &>> 6) &+ 1
+      let n = min(e &- pe, max(0, 33 &- estimate))
+      if n > 0 {
+        quo &*= unsafe ._exp10[unchecked: n]
+        e &-= n
+      }
+      if e > pe && quo < ._1e33 {
+        quo &*= 10
+        e &-= 1
+      }
+    }
+  }
+
   @inlinable
   @inline(always)
   internal static func _overflow(
@@ -1122,56 +1180,11 @@ extension Decimal128: AdditiveArithmetic {
     let inexact = rem != 0 || sticky
     if !inexact {
       // Select exact cohort before checking for overflow.
-      if e < pe {
-        if (quo & 1) == 0, let quo_ = quo._quotientIfExactDividingBy10() {
-          var delta = pe &- (e &+ 1)
-          quo = quo_
-          if delta >= 32 && (quo & 0xFFFFFFFF) == 0,
-              let quo_ = quo._quotientIfExactDividingBy1e32() {
-            delta &-= 32
-            quo = quo_
-          }
-          if delta >= 16 && (quo & 0xFFFF) == 0,
-              let quo_ = quo._quotientIfExactDividingBy1e16() {
-            delta &-= 16
-            quo = quo_
-          }
-          if delta >= 8 && (quo & 0xFF) == 0,
-              let quo_ = quo._quotientIfExactDividingBy1e8() {
-            delta &-= 8
-            quo = quo_
-          }
-          if delta >= 4 && (quo & 0xF) == 0,
-              let quo_ = quo._quotientIfExactDividingBy10000() {
-            delta &-= 4
-            quo = quo_
-          }
-          if delta >= 2 && (quo & 0x3) == 0,
-              let quo_ = quo._quotientIfExactDividingBy100() {
-            delta &-= 2
-            quo = quo_
-          }
-          if delta >= 1 && (quo & 1) == 0,
-              let quo_ = quo._quotientIfExactDividingBy10() {
-            delta &-= 1
-            quo = quo_
-          }
-          e = pe &- delta
-        }
-      } else if e > pe {
-        let estimate = ((19 &* (127 &- quo.leadingZeroBitCount)) &>> 6) &+ 1
-        let n = min(e &- pe, max(0, 33 &- estimate))
-        if n > 0 {
-          quo &*= unsafe ._exp10[unchecked: n]
-          e &-= n
-        }
-        if e > pe && quo < ._1e33 {
-          quo &*= 10
-          e &-= 1
-        }
-      }
+      _select(
+        biasedExponent: &e,
+        nonzeroSignificand: &quo,
+        boundedPreferredBiasedExponent: pe)
     }
-
     guard e <= 12287 else {
       return _overflow(isSignMinus: isSignMinus, rule, &flags)
     }
@@ -2115,8 +2128,68 @@ extension Decimal128: FloatingPoint {
   @usableFromInline
   internal func _addingProduct(
     _ lhs: Decimal128, _ rhs: Decimal128,
-    rounding rule: _DecimalFloatingPointRoundingRule
+    rounding rule: _DecimalFloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
+    var a = self, b = lhs, c = rhs
+
+    guard a._isFiniteNonzero && b._isFiniteNonzero && c._isFiniteNonzero else {
+      if a.isSignalingNaN {
+        _signal(.invalid, into: &flags)
+        a = a._quiet
+      }
+      if b.isSignalingNaN {
+        _signal(.invalid, into: &flags)
+        b = b._quiet
+      }
+      if c.isSignalingNaN {
+        _signal(.invalid, into: &flags)
+        c = c._quiet
+      }
+      let invalid = (b.isZero && c.isInfinite) || (c.isZero && b.isInfinite)
+      if invalid {
+        _signal(.invalid, into: &flags)
+      }
+      if a.isNaN { return a._canonical }
+      if b.isNaN { return b._canonical }
+      if c.isNaN { return c._canonical }
+      if invalid { return .nan }
+
+      if b.isInfinite || c.isInfinite {
+        let isSignMinus = b._isSignMinus != c._isSignMinus
+        if a.isInfinite && a._isSignMinus != isSignMinus {
+          _signal(.invalid, into: &flags)
+          return .nan
+        }
+        return isSignMinus ? -.infinity : .infinity
+      }
+      if a.isInfinite {
+        return a._canonical
+      }
+
+      if b.isZero || c.isZero {
+        var e = Int(a.exponentBitPattern)
+        let bce = Int(b.exponentBitPattern) &- 6176 &+ Int(c.exponentBitPattern)
+        let pe = min(e, bce)
+        if a.isZero {
+          let isSignMinus = rule == .down
+            ? a._isSignMinus || (b._isSignMinus != c._isSignMinus)
+            : a._isSignMinus && (b._isSignMinus != c._isSignMinus)
+          let abs = Self(
+            bitPattern: UInt128(truncatingIfNeeded: max(pe, 0)) &<< 113)
+          return isSignMinus ? -abs : abs
+        }
+        var c = a.significandBitPattern
+        Self._select(
+          biasedExponent: &e,
+          nonzeroSignificand: &c,
+          boundedPreferredBiasedExponent: max(pe, 0))
+        let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | c)
+        return a._isSignMinus ? -abs : abs
+      }
+      fatalError("Not implemented") // `a.isZero`.
+    }
+
     fatalError("Not implemented")
   }
 
@@ -2124,7 +2197,16 @@ extension Decimal128: FloatingPoint {
   public func addingProduct(
     _ lhs: Decimal128, _ rhs: Decimal128
   ) -> Decimal128 {
-    _addingProduct(lhs, rhs, rounding: .toNearestOrEven)
+    var flags: DecimalFloatingPointStatusFlags = []
+    return _addingProduct(lhs, rhs, rounding: .toNearestOrEven, &flags)
+  }
+
+  @inline(always)
+  public func addingProduct(
+    _ lhs: Decimal128, _ rhs: Decimal128,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    _addingProduct(lhs, rhs, rounding: .toNearestOrEven, &flags)
   }
 
   @inline(always)
@@ -2132,7 +2214,17 @@ extension Decimal128: FloatingPoint {
     _ lhs: Decimal128, _ rhs: Decimal128,
     rounding rule: FloatingPointRoundingRule
   ) -> Decimal128 {
-    _addingProduct(lhs, rhs, rounding: .init(rule))
+    var flags: DecimalFloatingPointStatusFlags = []
+    return _addingProduct(lhs, rhs, rounding: .init(rule), &flags)
+  }
+
+  @inline(always)
+  public func addingProduct(
+    _ lhs: Decimal128, _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    _addingProduct(lhs, rhs, rounding: .init(rule), &flags)
   }
 
   @inline(always)
@@ -2143,9 +2235,26 @@ extension Decimal128: FloatingPoint {
   @inline(always)
   public mutating func addProduct(
     _ lhs: Decimal128, _ rhs: Decimal128,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = addingProduct(lhs, rhs, &flags)
+  }
+
+  @inline(always)
+  public mutating func addProduct(
+    _ lhs: Decimal128, _ rhs: Decimal128,
     rounding rule: FloatingPointRoundingRule
   ) {
     self = addingProduct(lhs, rhs, rounding: rule)
+  }
+
+  @inline(always)
+  public mutating func addProduct(
+    _ lhs: Decimal128, _ rhs: Decimal128,
+    rounding rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = addingProduct(lhs, rhs, rounding: rule, &flags)
   }
 
   @inlinable
