@@ -1783,16 +1783,15 @@ extension Decimal128: Numeric {
       let (hi, lo) =
         UInt64(truncatingIfNeeded: lc).multipliedFullWidth(
           by: UInt64(truncatingIfNeeded: rc))
-      let c = UInt128(hi) &<< 64 | UInt128(lo)
-      if c < ._1e34 && e >= 0 && e <= 12287 {
-        let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | c)
-        return isSignMinus ? -abs : abs
-      }
-      product = (0, c)
+      product = (0, UInt128(hi) &<< 64 | UInt128(lo))
     } else {
       product = lc.multipliedFullWidth(by: rc)
     }
-
+    if product.high == 0 && product.low < ._1e34 && e >= 0 && e <= 12287 {
+      let abs = Self(
+        bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | product.low)
+      return isSignMinus ? -abs : abs
+    }
     return ._pack(
       isSignMinus: isSignMinus,
       biasedExponent: e,
@@ -2133,7 +2132,7 @@ extension Decimal128: FloatingPoint {
   ) -> Decimal128 {
     var a = self, b = lhs, c = rhs
 
-    guard a._isFiniteNonzero && b._isFiniteNonzero && c._isFiniteNonzero else {
+    guard a.isFinite && b._isFiniteNonzero && c._isFiniteNonzero else {
       if a.isSignalingNaN {
         _signal(.invalid, into: &flags)
         a = a._quiet
@@ -2167,27 +2166,68 @@ extension Decimal128: FloatingPoint {
         return a._canonical
       }
 
-      if b.isZero || c.isZero {
-        var e = Int(a.exponentBitPattern)
-        let bce = Int(b.exponentBitPattern) &- 6176 &+ Int(c.exponentBitPattern)
-        let pe = min(e, bce)
-        if a.isZero {
-          let isSignMinus = rule == .down
-            ? a._isSignMinus || (b._isSignMinus != c._isSignMinus)
-            : a._isSignMinus && (b._isSignMinus != c._isSignMinus)
-          let abs = Self(
-            bitPattern: UInt128(truncatingIfNeeded: max(pe, 0)) &<< 113)
-          return isSignMinus ? -abs : abs
-        }
-        var c = a.significandBitPattern
-        Self._select(
-          biasedExponent: &e,
-          nonzeroSignificand: &c,
-          boundedPreferredBiasedExponent: max(pe, 0))
-        let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | c)
-        return a._isSignMinus ? -abs : abs
+      // `b.isZero || c.isZero`.
+      var ae = Int(a.exponentBitPattern)
+      let pe =
+        min(ae, Int(b.exponentBitPattern) &- 6176 &+ Int(c.exponentBitPattern))
+      if a.isZero {
+        let isSignMinus = rule == .down
+          ? a._isSignMinus || (b._isSignMinus != c._isSignMinus)
+          : a._isSignMinus && (b._isSignMinus != c._isSignMinus)
+        let abs = Self(
+          bitPattern: UInt128(truncatingIfNeeded: max(pe, 0)) &<< 113)
+        return isSignMinus ? -abs : abs
       }
-      fatalError("Not implemented") // `a.isZero`.
+      var ac = a.significandBitPattern
+      Self._select(
+        biasedExponent: &ae,
+        nonzeroSignificand: &ac,
+        boundedPreferredBiasedExponent: max(pe, 0))
+      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: ae) &<< 113 | ac)
+      return a._isSignMinus ? -abs : abs
+    }
+
+    let ae = Int(a.exponentBitPattern)
+    let bce = Int(b.exponentBitPattern) &- 6176 &+ Int(c.exponentBitPattern)
+    let ac = a.isZero ? 0 : a.significandBitPattern
+    if ac != 0 {
+      let n = ae &- bce
+      if n >= 70 {
+        let logac = ac._commonLogarithm
+        // Without computing the product, we know it has at most 68 digits,
+        // and hence `log10(product)` is at most 67.
+        if n &+ logac &- 67 >= 36 {
+          // TODO: Continue here.
+        }
+      }
+    }
+
+    let bc = b.significandBitPattern
+    let cc = c.significandBitPattern
+    let product: (high: UInt128, low: UInt128)
+    if bc <= 0xFFFF_FFFF_FFFF_FFFF && cc <= 0xFFFF_FFFF_FFFF_FFFF {
+      let (hi, lo) =
+        UInt64(truncatingIfNeeded: bc).multipliedFullWidth(
+          by: UInt64(truncatingIfNeeded: cc))
+      product = (0, UInt128(hi) &<< 64 | UInt128(lo))
+    } else {
+      product = bc.multipliedFullWidth(by: cc)
+    }
+    if product.high == 0 && product.low < ._1e34 && bce >= 0 && bce <= 12287 {
+      let isSignMinus = b._isSignMinus != c._isSignMinus
+      let abs = Self(
+        bitPattern: UInt128(truncatingIfNeeded: bce) &<< 113 | product.low)
+      return a._adding(isSignMinus ? -abs : abs, rounding: rule, &flags)
+    }
+    let pe = min(ae, bce)
+    if ac == 0 {
+      return ._pack(
+        isSignMinus: b._isSignMinus != c._isSignMinus,
+        biasedExponent: bce,
+        significand: product,
+        preferredBiasedExponent: pe,
+        rule,
+        &flags)
     }
 
     fatalError("Not implemented")
