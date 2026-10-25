@@ -1,7 +1,7 @@
 import Testing
 @testable import DecimalCore
 
-struct DecimalAnnexTests {
+struct DecimalCoreTests {
   @Test
   func testDPD() {
     let fixture: [(decoded: UInt16, encoded: UInt16)] = [
