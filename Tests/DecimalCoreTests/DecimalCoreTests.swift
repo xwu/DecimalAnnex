@@ -1,5 +1,5 @@
 import Testing
-@testable import DecimalAnnex
+@testable import DecimalCore
 
 struct DecimalAnnexTests {
   @Test

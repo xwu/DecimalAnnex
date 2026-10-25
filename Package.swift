@@ -6,6 +6,9 @@ let package = Package(
   name: "DecimalAnnex",
   products: [
     .library(
+      name: "DecimalCore",
+      targets: ["DecimalCore"]),
+    .library(
       name: "DecimalAnnex",
       targets: ["DecimalAnnex"]),
   ],
@@ -14,16 +17,19 @@ let package = Package(
   ],
   targets: [
     .target(
-      name: "DecimalAnnex",
+      name: "DecimalCore",
       dependencies: [
         .product(name: "Numerics", package: "swift-numerics"),
       ],
       swiftSettings: [
           .strictMemorySafety(),
       ]),
+    .target(
+      name: "DecimalAnnex",
+      dependencies: ["DecimalCore"]),
     .testTarget(
-      name: "DecimalAnnexTests",
-      dependencies: ["DecimalAnnex"]),
+      name: "DecimalCoreTests",
+      dependencies: ["DecimalCore"]),
   ]
 )
 
