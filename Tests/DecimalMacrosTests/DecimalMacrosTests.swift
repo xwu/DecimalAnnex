@@ -59,4 +59,27 @@ struct DecimalMacrosTests {
       ],
       macros: ["Decimal128": Decimal128LiteralMacro.self])
   }
+
+  @Test
+  func `inexact literal replacement`() {
+    let description = "1.234567890123456789012345678901234e+34"
+    let expansion = ".init(bitPattern: 64146869958229383979654763996863967218)"
+    assertMacroExpansion(
+      "#Decimal128(\(description))",
+      expandedSource: expansion,
+      macros: ["Decimal128": Decimal128LiteralMacro.self])
+    assertMacroExpansion(
+      "#Decimal128(12345678901234567890123456789012345)",
+      expandedSource: expansion,
+      diagnostics: [
+        DiagnosticSpec(
+          message: "Literal as 'Decimal128' rounds to '\(description)'",
+          line: 1,
+          column: 13,
+          severity: .warning,
+          fixIts: [FixItSpec(message: "Replace with '\(description)'")])
+      ],
+      macros: ["Decimal128": Decimal128LiteralMacro.self],
+      fixedSource: "#Decimal128(\(description))")
+  }
 }

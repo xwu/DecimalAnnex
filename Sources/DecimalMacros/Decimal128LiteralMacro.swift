@@ -2,6 +2,7 @@ import DecimalCore
 import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
+import SwiftDiagnostics
 
 public struct Decimal128LiteralMacro: ExpressionMacro {
   public static func expansion(
@@ -21,9 +22,29 @@ public struct Decimal128LiteralMacro: ExpressionMacro {
       throw MacroExpansionErrorMessage(
         "'#Decimal128' macro expansion on host anyAppleOS requires version 26.0 or later")
     }
-    guard let value = DecimalCore::Decimal128(literal) else {
+    var flags: DecimalFloatingPointStatusFlags = []
+    guard let value = DecimalCore::Decimal128(literal, &flags) else {
       throw MacroExpansionErrorMessage(
         "Unable to initialize 'Decimal128' value from specified literal")
+    }
+    if flags.contains(.inexact) {
+      let description = value.description
+      var fixIts: [FixIt] = []
+      if value.isFinite {
+        let replacement = ExprSyntax("\(raw: description)")
+          .with(\.leadingTrivia, arg.expression.leadingTrivia)
+          .with(\.trailingTrivia, arg.expression.trailingTrivia)
+        fixIts.append(.replace(
+          message: MacroExpansionFixItMessage("Replace with '\(description)'"),
+          oldNode: arg.expression,
+          newNode: replacement))
+      }
+      context.diagnose(
+        Diagnostic(
+          node: arg.expression,
+          message: MacroExpansionWarningMessage(
+            "Literal as 'Decimal128' rounds to '\(description)'"),
+          fixIts: fixIts))
     }
     return ".init(bitPattern: \(raw: String(value.bitPattern)))"
   }
