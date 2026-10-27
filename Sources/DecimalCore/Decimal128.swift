@@ -3128,7 +3128,271 @@ extension Decimal128: CustomStringConvertible {
 
 @available(anyAppleOS 26.0, *)
 extension Decimal128: LosslessStringConvertible {
+  @inlinable
+  internal static func _parse(
+    utf8: Span<UInt8>,
+    rounding rule: _DecimalFloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128? {
+    let count = utf8.count
+    guard count != 0 else { return nil }
+    guard count <= (Int.max / 10) &- 6256 else { return nil }
+    // See `limit` below for derivation of this upper bound.
+    // TODO: Consider if we want to support ludicrously large strings.
+    var index = 0
+
+    // Get the sign.
+    var isSignMinus = false
+    var codeUnit = unsafe utf8[unchecked: index]
+    if codeUnit == 43 /* '+' */ || codeUnit == 45 /* '-' */ {
+      isSignMinus = codeUnit == 45
+      index &+= 1
+      guard index != count else { return nil }
+      codeUnit = unsafe utf8[unchecked: index]
+    }
+
+    // Handle infinity and NaN.
+    codeUnit |= 0x20
+    if codeUnit == 105 || codeUnit == 110 || codeUnit == 115 /* 'i' 'n' 's' */ {
+      @inline(always)
+      func starts(with prefix: StaticString) -> Bool {
+        prefix.withUTF8Buffer {
+          guard count &- index >= $0.count else { return false }
+          for i in 0..<$0.count {
+            if unsafe (utf8[unchecked: index &+ i] | 0x20) != $0[i] {
+              return false
+            }
+          }
+          return true
+        }
+      }
+      let abs: Self
+      if codeUnit == 105 {
+        guard
+          (count &- index == 3 && starts(with: "inf")) ||
+          (count &- index == 8 && starts(with: "infinity"))
+        else {
+          return nil
+        }
+        abs = .infinity
+      } else {
+        let signaling: Bool
+        if starts(with: "nan") {
+          signaling = false
+          index &+= 3
+        } else if starts(with: "snan") {
+          signaling = true
+          index &+= 4
+        } else {
+          return nil
+        }
+        var payload: UInt128 = 0
+        if index != count {
+          guard
+            count &- index >= 2,
+            unsafe utf8[unchecked: index] == 40 /* '(' */,
+            unsafe utf8[unchecked: count &- 1] == 41 /* ')' */
+          else {
+            return nil
+          }
+          index &+= 1
+          let end = count &- 1
+          var radix: UInt8 = 10
+          if end &- index >= 2, unsafe utf8[unchecked: index] == 48 /* '0' */ {
+            if unsafe (utf8[unchecked: index &+ 1] | 0x20) == 120 /* 'x' */ {
+              radix = 16
+              index &+= 2
+            } else {
+              radix = 8
+              index &+= 1
+            }
+          }
+          let (a, b) = radix > 10 ? (9, radix &- 11) : (radix &- 1, 0)
+          while index != end {
+            codeUnit = unsafe utf8[unchecked: index]
+            var digit = codeUnit &- 48 /* '0' */
+            if digit > a {
+              if radix > 10 {
+                digit = (codeUnit | 0x20) &- 97 /* 'a' */
+                if digit > b {
+                  return nil
+                }
+                digit &+= 10
+              } else {
+                return nil
+              }
+            }
+            payload = min(._1e33, payload &* UInt128(radix) &+ UInt128(digit))
+            index &+= 1
+          }
+        }
+        abs = Self(nan: payload == ._1e33 ? 0 : payload, signaling: signaling)
+      }
+      return isSignMinus ? -abs : abs
+    }
+
+    // Build the significand and exponent.
+    var digitCount = 0
+    var leading: UInt64 = 0
+    var trailing: UInt64 = 0
+    var sticky = false
+    var exponent = 0
+
+    @inline(always)
+    func digit(_ codeUnit: UInt8) -> UInt8? {
+      let digit = codeUnit &- 48 /* '0' */
+      return digit < 10 ? digit : nil
+    }
+
+    @inline(always)
+    func consume(_ digit: UInt8, _ fraction: Bool) {
+      if digitCount == 0 && digit == 0 {
+        if fraction { exponent &-= 1 }
+        return
+      }
+      // Retain at most 35 significand digits.
+      if digitCount == 35 {
+        if digit != 0 { sticky = true }
+        // Increment exponent only if dropping a non-fractional digit.
+        if !fraction { exponent &+= 1 }
+        return
+      }
+      if digitCount < 19 {
+        leading = leading &* 10 &+ UInt64(digit)
+      } else {
+        trailing = trailing &* 10 &+ UInt64(digit)
+      }
+      digitCount &+= 1
+      // Decrement exponent if a fractional digit.
+      if fraction { exponent &-= 1 }
+    }
+
+    let anchor = index
+    while index != count, let d = digit(unsafe utf8[unchecked: index]) {
+      consume(d, false)
+      index &+= 1
+    }
+    let hasIntegerPart = index != anchor
+    if index != count, unsafe utf8[unchecked: index] == 46 /* '.' */ {
+      index &+= 1
+      let anchor = index
+      while index != count, let d = digit(unsafe utf8[unchecked: index]) {
+        consume(d, true)
+        index &+= 1
+      }
+      let hasFractionalPart = index != anchor
+      guard hasIntegerPart || hasFractionalPart else { return nil }
+    } else {
+      guard hasIntegerPart else { return nil }
+    }
+    let significand: UInt128
+    if digitCount <= 19 {
+      significand = UInt128(leading)
+    } else {
+      significand =
+        unsafe UInt128(leading) &* ._exp10[unchecked: digitCount &- 19]
+          &+ UInt128(trailing)
+    }
+
+    // A limit sufficient for saturation to guarantee overflow or underflow.
+    let limit = count &+ 6255
+    var biasedExponent = exponent &+ 6176
+    if index != count, unsafe (utf8[unchecked: index] | 0x20) == 101 /* 'e' */ {
+      index &+= 1
+      var isExponentSignMinus = false
+      if index != count {
+        codeUnit = unsafe utf8[unchecked: index]
+        if codeUnit == 43 /* '+' */ || codeUnit == 45 /* '-' */ {
+          isExponentSignMinus = codeUnit == 45
+          index &+= 1
+        }
+      }
+      let anchor = index
+      var x = 0
+      while index != count, let d = digit(unsafe utf8[unchecked: index]) {
+        x = min(limit, x &* 10 &+ Int(d))
+        index &+= 1
+      }
+      guard index != anchor else { return nil }
+      if isExponentSignMinus {
+        biasedExponent &-= x
+      } else {
+        biasedExponent &+= x
+      }
+    }
+    guard index == count else { return nil }
+
+    if digitCount <= 34 && biasedExponent >= 0 && biasedExponent <= 12287 {
+      // Exact.
+      assert(!sticky)
+      let abs = Self(
+        bitPattern: UInt128(truncatingIfNeeded: biasedExponent) &<< 113
+          | significand)
+      return isSignMinus ? -abs : abs
+    }
+    return ._pack(
+      isSignMinus: isSignMinus,
+      biasedExponent: biasedExponent,
+      significand: (0, significand),
+      sticky: sticky,
+      rule,
+      &flags)
+  }
+
+  @inlinable
+  internal init?<T: StringProtocol>(
+    _ description: T,
+    _rounding rule: _DecimalFloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    let x: Self?? = description.utf8.withContiguousStorageIfAvailable {
+      unsafe ._parse(utf8: $0.span, rounding: rule, &flags)
+    }
+    let y: Self?
+    if let x {
+      y = x
+    } else {
+      var string = String(description)
+      y = string.withUTF8 {
+        unsafe ._parse(utf8: $0.span, rounding: rule, &flags)
+      }
+    }
+    if let y {
+      self = y
+      return
+    }
+    return nil
+  }
+
+  @inline(always)
   public init?<T: StringProtocol>(_ description: T) {
-    fatalError("Not implemented")
+    var flags: DecimalFloatingPointStatusFlags = []
+    self.init(description, _rounding: .toNearestOrEven, &flags)
+  }
+
+  @inline(always)
+  public init?<T: StringProtocol>(
+    _ description: T,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self.init(description, _rounding: .toNearestOrEven, &flags)
+  }
+
+  @inline(always)
+  public init?<T: StringProtocol>(
+    _ description: T,
+    rounding rule: FloatingPointRoundingRule
+  ) {
+    var flags: DecimalFloatingPointStatusFlags = []
+    self.init(description, _rounding: .init(rule), &flags)
+  }
+
+  @inline(always)
+  public init?<T: StringProtocol>(
+    _ description: T,
+    rounding rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self.init(description, _rounding: .init(rule), &flags)
   }
 }
