@@ -20,10 +20,24 @@ The implementation is written in native Swift. It requires no decimal floating-p
 
 Decimal floating-point values carry a *quantum*: the power of ten associated with their integer coefficient.
 This distinguishes representations such as `1.0` and `1.00` that compare equal to each other and hash identically.
-Arithmetic follows IEEE 754 "preferred exponent" rules, and `quantized(by:rounding:)` selects a particular quantum explicitly.
+Arithmetic operations follow IEEE 754 "preferred exponent" rules to determine the representation of their result,
+while `quantized(by:rounding:)` selects a quantum explicitly.
 
-Although `Decimal128` uses the IEEE binary integer decimal (BID) encoding internally,
-you can use the `decimalEncoding` property and `init(decimalEncoding:)` to work with the densely packed decimal (DPD) interchange encoding.
+To avoid loss of decimal precision and preserve meaningful trailing zeros,
+`Decimal128` doesn't conform to `ExpressibleByFloatLiteral`,
+but values can be created straightforwardly using decimal float literals by calling a macro.
+
+```swift
+let a = #Decimal128(1.0)
+let b = #Decimal128(1.00)
+
+print(a)                // 1.0
+print(b)                // 1.00
+a == b                  // true
+a.quantum == b.quantum  // false
+```
+
+The macro diagnoses literal expressions that have to be rounded with a warning and, if the rounded value is finite, a fix-it.
 
 ## Rounding direction and status flags
 
