@@ -764,11 +764,15 @@ extension Decimal128 {
       if digit != 0 || sticky { _signal(.underflowInexact, into: &flags) }
       e = 0
     } else if e > 12287 {
+      if c >= ._1e33 {
+        self = ._overflow(isSignMinus: isSignMinus, rule, &flags)
+        return
+      }
       Self._select(
         biasedExponent: &e,
         nonzeroSignificand: &c,
         boundedPreferredBiasedExponent: 12287)
-      guard e <= 12287 else {
+      if e > 12287 {
         self = ._overflow(isSignMinus: isSignMinus, rule, &flags)
         return
       }
