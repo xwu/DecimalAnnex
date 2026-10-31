@@ -3,6 +3,7 @@ import Testing
 
 struct DecimalCoreTests {
   @Test
+  @available(anyAppleOS 26.0, *)
   func testDPD() {
     let fixture: [(decoded: UInt16, encoded: UInt16)] = [
       // Collated from online sources.
