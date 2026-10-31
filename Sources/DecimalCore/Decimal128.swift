@@ -692,9 +692,148 @@ extension Decimal128 {
     return Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | c)
   }
 
+  @inlinable
+  internal init(
+    _sign: FloatingPointSign,
+    exponent: Int,
+    significand: Decimal128,
+    rounding rule: _DecimalFloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    let isSignMinus = (_sign == .minus) != significand._isSignMinus
+    guard significand._isFiniteNonzero else {
+      if significand.isSignalingNaN {
+        _signal(.invalid, into: &flags)
+        self = significand._quiet._canonical
+        return
+      }
+      if significand.isNaN {
+        self = significand._canonical
+        return
+      }
+      if significand.isInfinite {
+        self = isSignMinus ? -.infinity : .infinity
+        return
+      }
+      var e: Int
+      let overflow: Bool
+      (e, overflow) =
+        Int(significand.exponentBitPattern).addingReportingOverflow(exponent)
+      if overflow {
+        e = 12287
+      } else {
+        e = min(12287, max(e, 0))
+      }
+      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113)
+      self = isSignMinus ? -abs : abs
+      return
+    }
+
+    var e: Int
+    let overflow: Bool
+    (e, overflow) =
+      Int(significand.exponentBitPattern).addingReportingOverflow(exponent)
+    if overflow { e = .max }
+    var c = significand.significandBitPattern
+
+    if e < 0 {
+      let digit: UInt8
+      let sticky: Bool
+      if e < -34 {
+        c = 0
+        digit = 0
+        sticky = true
+      } else {
+        let n = -e
+        let r: UInt128
+        (c, r) = c._quotientAndRemainder(dividingBy1e: n)
+        let half: UInt128 = unsafe ._exp10[unchecked: n] &>> 1
+        digit = r >= half ? 5 : 0
+        sticky = r != 0 && r != half
+      }
+      if Self._roundsAway(
+        isSignMinus: isSignMinus,
+        significand: c,
+        digit: digit,
+        sticky: sticky,
+        rule
+      ) {
+        c &+= 1
+      }
+      // Every such inexact result is tiny before rounding.
+      if digit != 0 || sticky { _signal(.underflowInexact, into: &flags) }
+      e = 0
+    } else if e > 12287 {
+      Self._select(
+        biasedExponent: &e,
+        nonzeroSignificand: &c,
+        boundedPreferredBiasedExponent: 12287)
+      guard e <= 12287 else {
+        self = ._overflow(isSignMinus: isSignMinus, rule, &flags)
+        return
+      }
+    }
+
+    let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | c)
+    self = isSignMinus ? -abs : abs
+  }
+
+  @inline(always)
   public init(sign: FloatingPointSign, exponent: Int, significand: Decimal128) {
-    // scaleB
-    fatalError("Not implemented")
+    var flags: DecimalFloatingPointStatusFlags = []
+    self.init(
+      _sign: sign,
+      exponent: exponent,
+      significand: significand,
+      rounding: .toNearestOrEven,
+      &flags)
+  }
+
+  @inline(always)
+  public init(
+    sign: FloatingPointSign,
+    exponent: Int,
+    significand: Decimal128,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self.init(
+      _sign: sign,
+      exponent: exponent,
+      significand: significand,
+      rounding: .toNearestOrEven,
+      &flags)
+  }
+
+  @inline(always)
+  public init(
+    sign: FloatingPointSign,
+    exponent: Int,
+    significand: Decimal128,
+    rounding rule: FloatingPointRoundingRule
+  ) {
+    var flags: DecimalFloatingPointStatusFlags = []
+    self.init(
+      _sign: sign,
+      exponent: exponent,
+      significand: significand,
+      rounding: .init(rule),
+      &flags)
+  }
+
+  @inline(always)
+  public init(
+    sign: FloatingPointSign,
+    exponent: Int,
+    significand: Decimal128,
+    rounding rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self.init(
+      _sign: sign,
+      exponent: exponent,
+      significand: significand,
+      rounding: .init(rule),
+      &flags)
   }
 }
 
@@ -3402,13 +3541,13 @@ extension Decimal128: LosslessStringConvertible {
     } else if biasedExponent < 0 {
       isKnownTiny = true
       let n = -biasedExponent
-      let divisor: UInt128 = unsafe ._exp10[unchecked: n]
       let r: UInt128
       (significand, r) = significand._quotientAndRemainder(dividingBy1e: n)
-      if guardDigit != 0 || (r != 0 && r != divisor &>> 1) {
+      let half: UInt128 = unsafe ._exp10[unchecked: n] &>> 1
+      if guardDigit != 0 || (r != 0 && r != half) {
         sticky = true
       }
-      guardDigit = r >= divisor &>> 1 ? 5 : 0
+      guardDigit = r >= half ? 5 : 0
       biasedExponent = 0
     } else if biasedExponent > 12287 {
       let n = biasedExponent &- 12287
