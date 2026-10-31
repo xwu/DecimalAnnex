@@ -5,22 +5,22 @@ public enum _DPD { }
 extension _DPD {
   @usableFromInline
   internal static let _partialDecoding: [_ of UInt16] = [
-      8,  80, 800, 880,
-     28,  82, 820, 808,
-     48,  84, 840,  88,
-     68,  86, 860, 888,
-    208, 280, 802, 882,
-    228, 282, 822, 828,
-    248, 284, 842, 288,
-    268, 286, 862, 888,
-    408, 480, 804, 884,
-    428, 482, 824, 848,
-    448, 484, 844, 488,
-    468, 486, 864, 888,
-    608, 680, 806, 886,
-    628, 682, 826, 868,
-    648, 684, 846, 688,
-    668, 686, 866, 888,
+      0,   2,   4,   6,   8,  80, 800, 880,
+     20,  22,  24,  26,  28,  82, 820, 808,
+     40,  42,  44,  46,  48,  84, 840,  88,
+     60,  62,  64,  66,  68,  86, 860, 888,
+    200, 202, 204, 206, 208, 280, 802, 882,
+    220, 222, 224, 226, 228, 282, 822, 828,
+    240, 242, 244, 246, 248, 284, 842, 288,
+    260, 262, 264, 266, 268, 286, 862, 888,
+    400, 402, 404, 406, 408, 480, 804, 884,
+    420, 422, 424, 426, 428, 482, 824, 848,
+    440, 442, 444, 446, 448, 484, 844, 488,
+    460, 462, 464, 466, 468, 486, 864, 888,
+    600, 602, 604, 606, 608, 680, 806, 886,
+    620, 622, 624, 626, 628, 682, 826, 868,
+    640, 642, 644, 646, 648, 684, 846, 688,
+    660, 662, 664, 666, 668, 686, 866, 888,
   ]
 
   @usableFromInline
@@ -64,23 +64,16 @@ extension _DPD {
     //   ┌───┬───┬───┬───┬───┬───┬───┬───┬───┬───┐
     //   │ p │ q │ r │ s │ t │ u │ v │ w │ x │ y │
     //   └───┴───┴───┴───┴───┴───┴───┴───┴───┴───┘
-
-    let pqr = declet &>> 7
-    let stu = (declet &>> 4) & 7
-    let vwxy = declet & 15
-
-    // When v == 0 or vwx == 0b100, the encoded value is
-    // pqr * 100 + stu * 10 + vwxy.
-    if vwxy <= 0b1001 {
-        return pqr &* 100 &+ stu &* 10 &+ vwxy
-    }
-
-    // For all remaining values, v == 1.
-    // We'll use pqstwx as an index to look up the partial result in a table,
+    //
+    // We'll use pqstvwx as an index to look up the partial result in a table,
     // then add r * 100 + u * 10 + y.
-    let index = Int(((pqr & 6) &<< 3) | ((stu & 6) &<< 1) | ((vwxy & 6) &>> 1))
-    return unsafe _partialDecoding[unchecked: index]
-      &+ (pqr & 1) &* 100 &+ (stu & 1) &* 10 &+ (vwxy & 1)
+    let pqstvwx =
+      ((declet &>> 3) & 0x60) | ((declet &>> 2) & 0x18) | ((declet &>> 1) & 0x7)
+    let r = (declet &>> 7) & 1
+    let u = (declet &>> 4) & 1
+    let y = declet & 1
+    return unsafe _partialDecoding[unchecked: Int(pqstvwx)]
+      &+ r &* 100 &+ u &* 10 &+ y
   }
 
   @inlinable
@@ -99,27 +92,33 @@ extension _DPD {
     let abcdef = UInt64(truncatingIfNeeded: significand &>> 60)
     let ghijkm = UInt64(truncatingIfNeeded: significand & ((1 &<< 60) &- 1))
 
-    let abc = UInt32(truncatingIfNeeded: abcdef &>> 30)
-    let def = UInt32(truncatingIfNeeded: abcdef & ((1 &<< 30) &- 1))
+    let high: UInt64
+    if abcdef < 10 {
+      high = abcdef
+    } else {
+      let abc = UInt32(truncatingIfNeeded: abcdef &>> 30)
+      let def = UInt32(truncatingIfNeeded: abcdef & ((1 &<< 30) &- 1))
+
+      // We will deal with 'a' separately later, since it's got only 4 bits.
+      let b = UInt16(truncatingIfNeeded: (abc &>> 10) & 1023)
+      let c = UInt16(truncatingIfNeeded: abc & 1023)
+      let d = UInt16(truncatingIfNeeded: def &>> 20)
+      let e = UInt16(truncatingIfNeeded: (def &>> 10) & 1023)
+      let f = UInt16(truncatingIfNeeded: def & 1023)
+
+      let highest =
+        (abc &>> 20)      &* 1_000_000 &+
+        UInt32(decode(b)) &* 1_000 &+
+        UInt32(decode(c))
+      let higher =
+        UInt32(decode(d)) &* 1_000_000 &+
+        UInt32(decode(e)) &* 1_000 &+
+        UInt32(decode(f))
+      high = UInt64(highest) &* 1_000_000_000 &+ UInt64(higher)
+    }
+
     let ghi = UInt32(truncatingIfNeeded: ghijkm &>> 30)
     let jkm = UInt32(truncatingIfNeeded: ghijkm & ((1 &<< 30) &- 1))
-
-    // We will deal with 'a' separately later, since it's got only 4 bits.
-    let b = UInt16(truncatingIfNeeded: (abc &>> 10) & 1023)
-    let c = UInt16(truncatingIfNeeded: abc & 1023)
-    let d = UInt16(truncatingIfNeeded: def &>> 20)
-    let e = UInt16(truncatingIfNeeded: (def &>> 10) & 1023)
-    let f = UInt16(truncatingIfNeeded: def & 1023)
-
-    let highest =
-      (abc &>> 20)      &* 1_000_000 &+
-      UInt32(decode(b)) &* 1_000 &+
-      UInt32(decode(c))
-    let higher =
-      UInt32(decode(d)) &* 1_000_000 &+
-      UInt32(decode(e)) &* 1_000 &+
-      UInt32(decode(f))
-    let high = UInt64(highest) &* 1_000_000_000 &+ UInt64(higher)
 
     let g = UInt16(truncatingIfNeeded: ghi &>> 20)
     let h = UInt16(truncatingIfNeeded: (ghi &>> 10) & 1023)
