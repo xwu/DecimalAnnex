@@ -2,7 +2,7 @@
 @available(anyAppleOS 26.0, *)
 @frozen
 public struct Decimal128: BitwiseCopyable, Sendable {
-  /// The bit pattern of the value’s binary encoding.
+  /// The bit pattern of the value's binary encoding.
   public var bitPattern: UInt128
 
   /// Creates a new value with the given binary-encoded bit pattern.
@@ -451,9 +451,7 @@ extension Decimal128 {
   @inlinable
   public var ulp: Decimal128 {
     guard _isFiniteNonzero else {
-      if isNaN {
-        return .nan
-      }
+      if isNaN { return .nan }
       return .leastNonzeroMagnitude
     }
     let e = exponentBitPattern
@@ -2170,7 +2168,10 @@ extension Decimal128 {
   ) {
     self.init(source, _rounding: .init(rule), &flags)
   }
+}
 
+@available(anyAppleOS 26.0, *)
+extension Decimal128 {
 #if false
   public init?(exactly source: Float16) {
     if source.isNaN {
@@ -2223,7 +2224,7 @@ extension Decimal128 {
     fatalError("Not implemented")
   }
 
-  // TODO: Conversion from `Decimal128` to binary integer or floating point.
+  // TODO: Conversion from `Decimal128` to floating point.
 }
 
 @available(anyAppleOS 26.0, *)
