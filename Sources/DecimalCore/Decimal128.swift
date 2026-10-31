@@ -3233,10 +3233,10 @@ extension Decimal128: LosslessStringConvertible {
 
     // Build the significand and exponent.
     var digitCount = 0
-    var leading: UInt64 = 0
-    var trailing: UInt64 = 0
+    var significand: UInt128
+    var guardDigit: UInt8
     var sticky = false
-    var exponent = 0
+    var biasedExponent = 6176
 
     @inline(always)
     func digit(_ codeUnit: UInt8) -> UInt8? {
@@ -3244,59 +3244,120 @@ extension Decimal128: LosslessStringConvertible {
       return digit < 10 ? digit : nil
     }
 
-    @inline(always)
-    func consume(_ digit: UInt8, _ fraction: Bool) {
-      if digitCount == 0 && digit == 0 {
-        if fraction { exponent &-= 1 }
-        return
-      }
-      // Retain at most 35 significand digits.
-      if digitCount == 35 {
-        if digit != 0 { sticky = true }
-        // Increment exponent only if dropping a non-fractional digit.
-        if !fraction { exponent &+= 1 }
-        return
-      }
-      if digitCount < 19 {
-        leading = leading &* 10 &+ UInt64(digit)
-      } else {
-        trailing = trailing &* 10 &+ UInt64(digit)
-      }
-      digitCount &+= 1
-      // Decrement exponent if a fractional digit.
-      if fraction { exponent &-= 1 }
-    }
+    if count &- index <= 19 {
+      var significand_: UInt64 = 0
 
-    let anchor = index
-    while index != count, let d = digit(unsafe utf8[unchecked: index]) {
-      consume(d, false)
-      index &+= 1
-    }
-    let hasIntegerPart = index != anchor
-    if index != count, unsafe utf8[unchecked: index] == 46 /* '.' */ {
-      index &+= 1
       let anchor = index
       while index != count, let d = digit(unsafe utf8[unchecked: index]) {
-        consume(d, true)
         index &+= 1
+        if digitCount == 0 && d == 0 { continue }
+        significand_ = significand_ &* 10 &+ UInt64(d)
+        digitCount &+= 1
       }
-      let hasFractionalPart = index != anchor
-      guard hasIntegerPart || hasFractionalPart else { return nil }
+      let hasIntegerPart = index != anchor
+      if index != count, unsafe utf8[unchecked: index] == 46 /* '.' */ {
+        index &+= 1
+        let anchor = index
+        while index != count, let d = digit(unsafe utf8[unchecked: index]) {
+          index &+= 1
+          // Decrement exponent if a fractional digit.
+          biasedExponent &-= 1
+          if digitCount == 0 && d == 0 { continue }
+          significand_ = significand_ &* 10 &+ UInt64(d)
+          digitCount &+= 1
+        }
+        let hasFractionalPart = index != anchor
+        guard hasIntegerPart || hasFractionalPart else { return nil }
+      } else {
+        guard hasIntegerPart else { return nil }
+      }
+      significand = UInt128(significand_)
+      guardDigit = 0
     } else {
-      guard hasIntegerPart else { return nil }
-    }
-    let significand: UInt128
-    if digitCount <= 19 {
-      significand = UInt128(leading)
-    } else {
-      significand =
-        unsafe UInt128(leading) &* ._exp10[unchecked: digitCount &- 19]
-          &+ UInt128(trailing)
+      var leading: UInt64 = 0
+      var trailing: UInt64 = 0
+      var next: UInt8? = nil
+
+      @inline(always)
+      func consume(_ digit: UInt8, into chunk: inout UInt64, fraction: Bool) {
+        // Decrement exponent if a fractional digit.
+        if fraction { biasedExponent &-= 1 }
+        if digitCount == 0 && digit == 0 { return }
+        chunk = chunk &* 10 &+ UInt64(digit)
+        digitCount &+= 1
+      }
+
+      let anchor = index
+      integer: do {
+        while digitCount < 19 {
+          guard index != count, let d = digit(unsafe utf8[unchecked: index])
+          else { break integer }
+          consume(d, into: &leading, fraction: false)
+          index &+= 1
+        }
+        while digitCount < 34 {
+          guard index != count, let d = digit(unsafe utf8[unchecked: index])
+          else { break integer }
+          consume(d, into: &trailing, fraction: false)
+          index &+= 1
+        }
+        if next == nil {
+          guard index != count, let d = digit(unsafe utf8[unchecked: index])
+          else { break integer }
+          next = d
+          biasedExponent &+= 1
+          index &+= 1
+        }
+        let anchor = index
+        while index != count, let d = digit(unsafe utf8[unchecked: index]) {
+          if d != 0 { sticky = true }
+          index &+= 1
+        }
+        biasedExponent &+= index &- anchor
+      }
+      let hasIntegerPart = index != anchor
+      if index != count, unsafe utf8[unchecked: index] == 46 /* '.' */ {
+        index &+= 1
+        let anchor = index
+        fractional: do {
+          while digitCount < 19 {
+            guard index != count, let d = digit(unsafe utf8[unchecked: index])
+            else { break fractional }
+            consume(d, into: &leading, fraction: true)
+            index &+= 1
+          }
+          while digitCount < 34 {
+            guard index != count, let d = digit(unsafe utf8[unchecked: index])
+            else { break fractional }
+            consume(d, into: &trailing, fraction: true)
+            index &+= 1
+          }
+          if next == nil {
+            guard index != count, let d = digit(unsafe utf8[unchecked: index])
+            else { break fractional }
+            next = d
+            index &+= 1
+          }
+          while index != count, let d = digit(unsafe utf8[unchecked: index]) {
+            if d != 0 { sticky = true }
+            index &+= 1
+          }
+        }
+        let hasFractionalPart = index != anchor
+        guard hasIntegerPart || hasFractionalPart else { return nil }
+      } else {
+        guard hasIntegerPart else { return nil }
+      }
+      if digitCount <= 19 {
+        significand = UInt128(leading)
+      } else {
+        significand =
+          unsafe UInt128(leading) &* ._exp10[unchecked: digitCount &- 19]
+            &+ UInt128(trailing)
+      }
+      guardDigit = next ?? 0
     }
 
-    // A limit sufficient for saturation to guarantee overflow or underflow.
-    let limit = count &+ 6255
-    var biasedExponent = exponent &+ 6176
     if index != count, unsafe (utf8[unchecked: index] | 0x20) == 101 /* 'e' */ {
       index &+= 1
       var isExponentSignMinus = false
@@ -3307,6 +3368,8 @@ extension Decimal128: LosslessStringConvertible {
           index &+= 1
         }
       }
+      // A limit sufficient for saturation to guarantee overflow or underflow.
+      let limit = count &+ 6255
       let anchor = index
       var x = 0
       while index != count, let d = digit(unsafe utf8[unchecked: index]) {
@@ -3322,21 +3385,72 @@ extension Decimal128: LosslessStringConvertible {
     }
     guard index == count else { return nil }
 
-    if digitCount <= 34 && biasedExponent >= 0 && biasedExponent <= 12287 {
-      // Exact.
-      assert(!sticky)
-      let abs = Self(
-        bitPattern: UInt128(truncatingIfNeeded: biasedExponent) &<< 113
-          | significand)
+    if digitCount == 0 {
+      biasedExponent = min(12287, max(biasedExponent, 0))
+      let abs =
+        Self(bitPattern: UInt128(truncatingIfNeeded: biasedExponent) &<< 113)
       return isSignMinus ? -abs : abs
     }
-    return ._pack(
-      isSignMinus: isSignMinus,
-      biasedExponent: biasedExponent,
-      significand: (0, significand),
-      sticky: sticky,
-      rule,
-      &flags)
+
+    var isKnownTiny = false
+    if biasedExponent < -34 {
+      isKnownTiny = true
+      significand = 0
+      guardDigit = 0
+      sticky = true
+      biasedExponent = 0
+    } else if biasedExponent < 0 {
+      isKnownTiny = true
+      let n = -biasedExponent
+      let divisor: UInt128 = unsafe ._exp10[unchecked: n]
+      let r: UInt128
+      (significand, r) = significand._quotientAndRemainder(dividingBy1e: n)
+      if guardDigit != 0 || (r != 0 && r != divisor &>> 1) {
+        sticky = true
+      }
+      guardDigit = r >= divisor &>> 1 ? 5 : 0
+      biasedExponent = 0
+    } else if biasedExponent > 12287 {
+      let n = biasedExponent &- 12287
+      guard n <= 34 &- digitCount else {
+        return ._overflow(isSignMinus: isSignMinus, rule, &flags)
+      }
+      significand &*= unsafe ._exp10[unchecked: n]
+      assert(guardDigit == 0 && !sticky)
+      biasedExponent = 12287
+    }
+
+    if guardDigit != 0 || sticky {
+      // Inexact.
+      if Self._roundsAway(
+        isSignMinus: isSignMinus,
+        significand: significand,
+        digit: guardDigit,
+        sticky: sticky,
+        rule
+      ) {
+        if significand == ._1e34 &- 1 {
+          if biasedExponent == 12287 {
+            _signal(.overflowInexact, into: &flags)
+            return isSignMinus ? -.infinity : .infinity
+          }
+          significand = ._1e33
+          biasedExponent &+= 1
+        } else {
+          significand &+= 1
+        }
+      }
+      // `isKnownTiny == true` for all *inexact* tiny values.
+      if isKnownTiny {
+        _signal(.underflowInexact, into: &flags)
+      } else {
+        _signal(.inexact, into: &flags)
+      }
+    }
+    let abs = Self(
+      bitPattern: UInt128(truncatingIfNeeded: biasedExponent) &<< 113
+        | significand)
+    return isSignMinus ? -abs : abs
   }
 
   @inlinable
