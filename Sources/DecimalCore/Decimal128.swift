@@ -175,9 +175,10 @@ extension Decimal128 {
   ///   - payload: The payload to use for the new NaN value.
   ///   - signaling: Pass `true` to create a signaling NaN or `false` to create
   ///     a quiet NaN.
+  /// - Precondition: `payload` is less than `1e33`.
   @inlinable
   public init(nan payload: UInt128, signaling: Bool) {
-    precondition(payload < (1 &<< 110), "NaN payload is not encodable.")
+    precondition(payload < ._1e33, "NaN payload is not canonically encodable.")
     bitPattern = ((signaling ? 0x1f800 : 0x1f000) &<< 110) | payload
   }
 
@@ -610,14 +611,9 @@ extension Decimal128: Comparable {
 
 @available(anyAppleOS 26.0, *)
 extension Decimal128: ExpressibleByIntegerLiteral {
-  @inlinable
+  @inline(always)
   public init(integerLiteral value: Int128) {
-    bitPattern = value.magnitude
-    guard bitPattern < ._1e34 else {
-      fatalError("Potentially inexact integer conversion not implemented")
-    }
-    bitPattern |= Self().bitPattern
-    if value < 0 { self.negate() }
+    self.init(value)
   }
 }
 
