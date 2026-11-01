@@ -70,7 +70,8 @@ extension Decimal128 {
     }
   }
 
-  /// Select the exact cohort closest to the preferred exponent.
+  /// Select the cohort member with exponent closest to the preferred exponent
+  /// without changing the represented value.
   @inlinable
   @inline(always)
   internal static func _select(
@@ -150,8 +151,15 @@ extension Decimal128 {
     return isSignMinus ? -magnitude : magnitude
   }
 
-  /// Returns the given intermediate result packed into a `Decimal`, handling
-  /// exponent limits and rounding according to the given rule.
+  /// Returns the given intermediate result packed into a `Decimal128`,
+  /// handling exponent limits and rounding according to the given rule.
+  ///
+  /// For exact results, the cohort member is selected with biased exponent
+  /// closest to `preferredBiasedExponent ?? biasedExponent` (after clamping to
+  /// the encodable exponent range).
+  ///
+  /// - Precondition: `significand` is less than `1e68`; if `sticky` is `true`,
+  ///   `significand` is at least `1e34`.
   @inlinable
   internal static func _pack(
       isSignMinus: Bool,
@@ -614,7 +622,7 @@ extension Decimal128: AdditiveArithmetic {
   }
 
   /// Adds two values and produces their sum,
-  /// rounding to a representable value if needed.
+  /// rounding to the nearest representable value (ties to even) if needed.
   ///
   /// This method implements the `addition` operation defined by the
   /// IEEE 754 specification.
@@ -622,12 +630,25 @@ extension Decimal128: AdditiveArithmetic {
   /// - Parameters:
   ///   - lhs: The first value to add.
   ///   - rhs: The second value to add.
+  /// - Returns: The sum of `lhs` and `rhs`, rounded if needed.
   @inline(always)
   public static func + (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
     return lhs._adding(rhs, rounding: .toNearestOrEven, &flags)
   }
 
+  /// Returns the result of adding the given value to this value,
+  /// rounding to the nearest representable value (ties to even) if needed
+  /// and accumulating status flags.
+  ///
+  /// This method implements the `addition` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value to add to this value.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: The sum of this value and `rhs`, rounded if needed.
   @inline(always)
   public func adding(
     _ rhs: Decimal128,
@@ -637,14 +658,15 @@ extension Decimal128: AdditiveArithmetic {
   }
 
   /// Returns the result of adding the given value to this value,
-  /// rounding to a representable value if needed with the given rounding rule.
+  /// rounding to a representable value using the given rounding rule if needed.
   ///
   /// This method implements the `addition` operation defined by the
   /// IEEE 754 specification.
   ///
   /// - Parameters:
   ///   - rhs: The value to add to this value.
-  ///   - rule: The rounding rule for computing an inexact result.
+  ///   - rule: The rounding rule to use for an inexact result.
+  /// - Returns: The sum of this value and `rhs`, rounded if needed.
   @inline(always)
   public func adding(
     _ rhs: Decimal128,
@@ -654,6 +676,19 @@ extension Decimal128: AdditiveArithmetic {
     return _adding(rhs, rounding: .init(rule), &flags)
   }
 
+  /// Returns the result of adding the given value to this value,
+  /// rounding to a representable value using the given rounding rule if needed
+  /// and accumulating status flags.
+  ///
+  /// This method implements the `addition` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value to add to this value.
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: The sum of this value and `rhs`, rounded if needed.
   @inline(always)
   public func adding(
     _ rhs: Decimal128,
@@ -664,7 +699,7 @@ extension Decimal128: AdditiveArithmetic {
   }
 
   /// Adds two values and stores the result in the left-hand-side variable,
-  /// rounding to a representable value if needed.
+  /// rounding to the nearest representable value (ties to even) if needed.
   ///
   /// - Parameters:
   ///   - lhs: The first value to add.
@@ -674,6 +709,13 @@ extension Decimal128: AdditiveArithmetic {
     lhs = lhs + rhs
   }
 
+  /// Adds the given value to this value in place,
+  /// rounding to the nearest representable value (ties to even) if needed.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value to add to this value.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func add(
     _ rhs: Decimal128,
@@ -683,11 +725,11 @@ extension Decimal128: AdditiveArithmetic {
   }
 
   /// Adds the given value to this value in place,
-  /// rounding to a representable value if needed with the given rounding rule.
+  /// rounding to a representable value using the given rounding rule if needed.
   ///
   /// - Parameters:
   ///   - rhs: The value to add to this value.
-  ///   - rule: The rounding rule for computing an inexact result.
+  ///   - rule: The rounding rule to use for an inexact result.
   @inline(always)
   public mutating func add(
     _ rhs: Decimal128,
@@ -696,6 +738,14 @@ extension Decimal128: AdditiveArithmetic {
     self = adding(rhs, rounding: rule)
   }
 
+  /// Adds the given value to this value in place,
+  /// rounding to a representable value using the given rounding rule if needed.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value to add to this value.
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func add(
     _ rhs: Decimal128,
@@ -706,7 +756,7 @@ extension Decimal128: AdditiveArithmetic {
   }
 
   /// Subtracts one value from another and produces their difference,
-  /// rounding to a representable value if needed.
+  /// rounding to the nearest representable value (ties to even) if needed.
   ///
   /// This method implements the `subtraction` operation defined by the
   /// IEEE 754 specification.
@@ -714,12 +764,26 @@ extension Decimal128: AdditiveArithmetic {
   /// - Parameters:
   ///   - lhs: A numeric value.
   ///   - rhs: The value to subtract from `lhs`.
+  /// - Returns: The result of subtracting `rhs` from `lhs`, rounded if needed.
   @inline(always)
   public static func - (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
     return lhs._adding(-rhs, rounding: .toNearestOrEven, &flags)
   }
 
+  /// Returns the result of subtracting the given value from this value,
+  /// rounding to the nearest representable value (ties to even) if needed
+  /// and accumulating status flags.
+  ///
+  /// This method implements the `subtraction` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value to subtract from this value.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: The result of subtracting `rhs` from this value,
+  ///   rounded if needed.
   @inline(always)
   public func subtracting(
     _ rhs: Decimal128,
@@ -729,14 +793,16 @@ extension Decimal128: AdditiveArithmetic {
   }
 
   /// Returns the result of subtracting the given value from this value,
-  /// rounding to a representable value if needed with the given rounding rule.
+  /// rounding to a representable value using the given rounding rule if needed.
   ///
   /// This method implements the `subtraction` operation defined by the
   /// IEEE 754 specification.
   ///
   /// - Parameters:
   ///   - rhs: The value to subtract from this value.
-  ///   - rule: The rounding rule to use for computing an inexact result.
+  ///   - rule: The rounding rule to use for an inexact result.
+  /// - Returns: The result of subtracting `rhs` from this value,
+  ///   rounded if needed.
   @inline(always)
   public func subtracting(
     _ rhs: Decimal128,
@@ -746,6 +812,20 @@ extension Decimal128: AdditiveArithmetic {
     return _adding(-rhs, rounding: .init(rule), &flags)
   }
 
+  /// Returns the result of subtracting the given value from this value,
+  /// rounding to a representable value using the given rounding rule if needed
+  /// and accumulating status flags.
+  ///
+  /// This method implements the `subtraction` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value to subtract from this value.
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: The result of subtracting `rhs` from this value,
+  ///   rounded if needed.
   @inline(always)
   public func subtracting(
     _ rhs: Decimal128,
@@ -756,7 +836,8 @@ extension Decimal128: AdditiveArithmetic {
   }
 
   /// Subtracts the second value from the first and stores the difference in the
-  /// left-hand-side variable, rounding to a representable value if needed.
+  /// left-hand-side variable, rounding to the nearest representable value
+  /// (ties to even) if needed.
   ///
   /// - Parameters:
   ///   - lhs: A numeric value.
@@ -766,6 +847,13 @@ extension Decimal128: AdditiveArithmetic {
     lhs = lhs - rhs
   }
 
+  /// Subtracts the given value from this value in place,
+  /// rounding to the nearest representable value (ties to even) if needed.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value to subtract from this value.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func subtract(
     _ rhs: Decimal128,
@@ -775,11 +863,11 @@ extension Decimal128: AdditiveArithmetic {
   }
 
   /// Subtracts the given value from this value in place,
-  /// rounding to a representable value if needed with the given rounding rule.
+  /// rounding to a representable value using the given rounding rule if needed.
   ///
   /// - Parameters:
   ///   - rhs: The value to subtract from this value.
-  ///   - rule: The rounding rule to use for computing an inexact result.
+  ///   - rule: The rounding rule to use for an inexact result.
   @inline(always)
   public mutating func subtract(
     _ rhs: Decimal128,
@@ -788,6 +876,14 @@ extension Decimal128: AdditiveArithmetic {
     self = subtracting(rhs, rounding: rule)
   }
 
+  /// Subtracts the given value from this value in place,
+  /// rounding to a representable value using the given rounding rule if needed.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value to subtract from this value.
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func subtract(
     _ rhs: Decimal128,
@@ -873,7 +969,7 @@ extension Decimal128: Numeric {
   }
 
   /// Multiplies two values and produces their product,
-  /// rounding to a representable value if needed.
+  /// rounding to the nearest representable value (ties to even) if needed.
   ///
   /// This method implements the `multiplication` operation defined by the
   /// IEEE 754 specification.
@@ -881,12 +977,25 @@ extension Decimal128: Numeric {
   /// - Parameters:
   ///   - lhs: The first value to multiply.
   ///   - rhs: The second value to multiply.
+  /// - Returns: The product of `lhs` and `rhs`, rounded if needed.
   @inline(always)
   public static func * (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
     return lhs._multiplied(by: rhs, rounding: .toNearestOrEven, &flags)
   }
 
+  /// Returns the result of multiplying this value by the given value,
+  /// rounding to the nearest representable value (ties to even) if needed
+  /// and accumulating status flags.
+  ///
+  /// This method implements the `multiplication` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value by which to multiply this value.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: The product of this value and `rhs`, rounded if needed.
   @inline(always)
   public func multiplied(
     by rhs: Decimal128,
@@ -896,14 +1005,15 @@ extension Decimal128: Numeric {
   }
 
   /// Returns the result of multiplying this value by the given value,
-  /// rounding to a representable value if needed with the given rounding rule.
+  /// rounding to a representable value using the given rounding rule if needed.
   ///
   /// This method implements the `multiplication` operation defined by the
   /// IEEE 754 specification.
   ///
   /// - Parameters:
   ///   - rhs: The value by which to multiply this value.
-  ///   - rule: The rounding rule to use for computing an inexact result.
+  ///   - rule: The rounding rule to use for an inexact result.
+  /// - Returns: The product of this value and `rhs`, rounded if needed.
   @inline(always)
   public func multiplied(
     by rhs: Decimal128,
@@ -913,6 +1023,19 @@ extension Decimal128: Numeric {
     return _multiplied(by: rhs, rounding: .init(rule), &flags)
   }
 
+  /// Returns the result of multiplying this value by the given value,
+  /// rounding to a representable value using the given rounding rule if needed
+  /// and accumulating status flags.
+  ///
+  /// This method implements the `multiplication` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value by which to multiply this value.
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: The product of this value and `rhs`, rounded if needed.
   @inline(always)
   public func multiplied(
     by rhs: Decimal128,
@@ -923,7 +1046,8 @@ extension Decimal128: Numeric {
   }
 
   /// Multiplies two values and stores the result in the left-hand-side
-  /// variable, rounding to a representable value if needed.
+  /// variable, rounding to the nearest representable value (ties to even)
+  /// if needed.
   ///
   /// - Parameters:
   ///   - lhs: The first value to multiply.
@@ -933,6 +1057,13 @@ extension Decimal128: Numeric {
     lhs = lhs * rhs
   }
 
+  /// Multiplies this value by the given value in place,
+  /// rounding to the nearest representable value (ties to even) if needed.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value by which to multiply this value.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func multiply(
     by rhs: Decimal128,
@@ -941,12 +1072,12 @@ extension Decimal128: Numeric {
     self = multiplied(by: rhs, &flags)
   }
 
-  /// Multiplies this value by the given value in place, rounding to a
-  /// representable value if needed with the given rounding rule.
+  /// Multiplies this value by the given value in place,
+  /// rounding to a representable value using the given rounding rule if needed.
   ///
   /// - Parameters:
   ///   - rhs: The value by which to multiply this value.
-  ///   - rule: The rounding rule to use for computing an inexact result.
+  ///   - rule: The rounding rule to use for an inexact result.
   @inline(always)
   public mutating func multiply(
     by rhs: Decimal128,
@@ -955,6 +1086,14 @@ extension Decimal128: Numeric {
     self = multiplied(by: rhs, rounding: rule)
   }
 
+  /// Multiplies this value by the given value in place,
+  /// rounding to a representable value using the given rounding rule if needed.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value by which to multiply this value.
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func multiply(
     by rhs: Decimal128,
