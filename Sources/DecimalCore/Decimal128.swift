@@ -619,7 +619,7 @@ extension Decimal128: ExpressibleByIntegerLiteral {
 
 @available(anyAppleOS 26.0, *)
 extension Decimal128 {
-  /// The bit pattern of the value’s binary encoding.
+  /// The bit pattern of the value's binary encoding.
   ///
   /// This property is equivalent to `bitPattern` and implements the
   /// `encodeBinary` operation defined by the IEEE 754 specification.
