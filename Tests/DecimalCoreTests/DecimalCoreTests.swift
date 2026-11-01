@@ -131,9 +131,9 @@ struct DecimalCoreTests {
   func testAddition() {
     for i in 0..<256 {
       for j in 0..<256 {
-        let x = Decimal128(integerLiteral: Int128(i))
-        let y = Decimal128(integerLiteral: Int128(j))
-        #expect(Double(i + j).description == (x + y).description + "0")
+        let x = Decimal128(i)
+        let y = Decimal128(j)
+        #expect(Double(i + j).description == (x + y).description + ".0")
       }
     }
   }
@@ -143,9 +143,9 @@ struct DecimalCoreTests {
   func testMultiplication() {
     for i in 0..<256 {
       for j in 0..<256 {
-        let x = Decimal128(integerLiteral: Int128(i))
-        let y = Decimal128(integerLiteral: Int128(j))
-        #expect(Double(i * j).description == (x * y).description + "0")
+        let x = Decimal128(i)
+        let y = Decimal128(j)
+        #expect(Double(i * j).description == (x * y).description + ".0")
       }
     }
   }
@@ -153,18 +153,12 @@ struct DecimalCoreTests {
   @Test
   @available(anyAppleOS 26.0, *)
   func testDescription() {
-    // As a concession to the idiosyncrasies of float literals, we will write
-    // "." at the end of integral values in order to hint that these are
-    // floating-point values.
     let y = Decimal128(
       _sign: .minus,
       combinationBitPattern: 6176 << 3,
       trailingSignificandBitPattern: 1)
-    #expect(y.description == "-1.")
+    #expect(y.description == "-1")
 
-    // Otherwise, though, we don't take the special code paths to avoid
-    // scientific notation if there's not enough significant figures, and we
-    // also don't add phantom significant figures.
     var z = Decimal128(
       _sign: .minus,
       combinationBitPattern: 6177 << 3,

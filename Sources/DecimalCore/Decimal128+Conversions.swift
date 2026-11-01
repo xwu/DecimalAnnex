@@ -137,33 +137,11 @@ extension Decimal128 {
     }
     fatalError("Not implemented")
   }
-
-  public init?(exactly source: Float) {
-    fatalError("Not implemented")
-  }
-
-  public init?(exactly source: Double) {
-    fatalError("Not implemented")
-  }
 #endif
 
   public init?<T: BinaryFloatingPoint>(exactly source: T) {
     fatalError("Not implemented")
   }
-
-#if false
-  public init(_ source: Float16) {
-    fatalError("Not implemented")
-  }
-
-  public init(_ source: Float) {
-    fatalError("Not implemented")
-  }
-
-  public init(_ source: Double) {
-    fatalError("Not implemented")
-  }
-#endif
 
   public init<T: BinaryFloatingPoint>(_ source: T) {
     fatalError("Not implemented")
@@ -173,97 +151,196 @@ extension Decimal128 {
 }
 
 @available(anyAppleOS 26.0, *)
+extension UInt64 {
+  @usableFromInline
+  internal static let _asciiDigits: [100 of (UInt8, UInt8)] = [
+    (0x30, 0x30), (0x30, 0x31), (0x30, 0x32), (0x30, 0x33), (0x30, 0x34),
+    (0x30, 0x35), (0x30, 0x36), (0x30, 0x37), (0x30, 0x38), (0x30, 0x39),
+    (0x31, 0x30), (0x31, 0x31), (0x31, 0x32), (0x31, 0x33), (0x31, 0x34),
+    (0x31, 0x35), (0x31, 0x36), (0x31, 0x37), (0x31, 0x38), (0x31, 0x39),
+    (0x32, 0x30), (0x32, 0x31), (0x32, 0x32), (0x32, 0x33), (0x32, 0x34),
+    (0x32, 0x35), (0x32, 0x36), (0x32, 0x37), (0x32, 0x38), (0x32, 0x39),
+    (0x33, 0x30), (0x33, 0x31), (0x33, 0x32), (0x33, 0x33), (0x33, 0x34),
+    (0x33, 0x35), (0x33, 0x36), (0x33, 0x37), (0x33, 0x38), (0x33, 0x39),
+    (0x34, 0x30), (0x34, 0x31), (0x34, 0x32), (0x34, 0x33), (0x34, 0x34),
+    (0x34, 0x35), (0x34, 0x36), (0x34, 0x37), (0x34, 0x38), (0x34, 0x39),
+    (0x35, 0x30), (0x35, 0x31), (0x35, 0x32), (0x35, 0x33), (0x35, 0x34),
+    (0x35, 0x35), (0x35, 0x36), (0x35, 0x37), (0x35, 0x38), (0x35, 0x39),
+    (0x36, 0x30), (0x36, 0x31), (0x36, 0x32), (0x36, 0x33), (0x36, 0x34),
+    (0x36, 0x35), (0x36, 0x36), (0x36, 0x37), (0x36, 0x38), (0x36, 0x39),
+    (0x37, 0x30), (0x37, 0x31), (0x37, 0x32), (0x37, 0x33), (0x37, 0x34),
+    (0x37, 0x35), (0x37, 0x36), (0x37, 0x37), (0x37, 0x38), (0x37, 0x39),
+    (0x38, 0x30), (0x38, 0x31), (0x38, 0x32), (0x38, 0x33), (0x38, 0x34),
+    (0x38, 0x35), (0x38, 0x36), (0x38, 0x37), (0x38, 0x38), (0x38, 0x39),
+    (0x39, 0x30), (0x39, 0x31), (0x39, 0x32), (0x39, 0x33), (0x39, 0x34),
+    (0x39, 0x35), (0x39, 0x36), (0x39, 0x37), (0x39, 0x38), (0x39, 0x39),
+  ]
+
+  @unsafe
+  @inlinable
+  @inline(always)
+  @discardableResult
+  internal func _ascii(
+    _ span: inout MutableRawSpan,
+    uncheckedEndOffset: Int? = nil
+  ) -> Int {
+    var value = self
+    var offset = uncheckedEndOffset ?? span.byteCount
+    if value == 0 {
+      offset &-= 1
+      unsafe span.storeBytes(
+        of: 0x30 /* '0' */,
+        toUncheckedByteOffset: offset,
+        as: UInt8.self)
+    } else {
+      while value >= 10 {
+        offset &-= 2
+        let r: Self
+        (value, r) = value.quotientAndRemainder(dividingBy: 100)
+        unsafe span.storeBytes(
+          of: Self._asciiDigits[unchecked: Int(truncatingIfNeeded: r)],
+          toUncheckedByteOffset: offset,
+          as: (UInt8, UInt8).self)
+      }
+      if value != 0 {
+        offset &-= 1
+        unsafe span.storeBytes(
+          of: UInt8(truncatingIfNeeded: value) | 0x30,
+          toUncheckedByteOffset: offset,
+          as: UInt8.self)
+      }
+    }
+    return offset
+  }
+}
+
+@available(anyAppleOS 26.0, *)
 extension Decimal128: CustomStringConvertible {
+  @inlinable
+  internal func _description(_ output: inout OutputSpan<UInt8>) {
+    precondition(isFinite && output.freeCapacity >= 42)
+
+    if _isSignMinus {
+      output.append(45 /* '-' */)
+    }
+    let g = _combinationBitPattern
+    var c = bitPattern & (1 &<< 113 &- 1)
+    // Noncanonical zero (cf. `_canonical`).
+    if g >= 0x18000 || c >= ._1e34 { c = 0 }
+
+    var scratch = [34 of UInt8](repeating: 48 /* '0' */)
+    var span_ = scratch.mutableSpan
+    var span = span_.mutableBytes
+    var startOffset: Int
+    if c <= 0xFFFF_FFFF_FFFF_FFFF /* UInt64.max */ {
+      startOffset = unsafe UInt64(truncatingIfNeeded: c)._ascii(&span)
+    } else {
+      let (q, r) = c._quotientAndRemainder(dividingBy1e: 19)
+      unsafe UInt64(truncatingIfNeeded: r)._ascii(&span)
+      startOffset =
+        unsafe UInt64(truncatingIfNeeded: q)
+          ._ascii(&span, uncheckedEndOffset: 15)
+    }
+    let count = 34 &- startOffset
+    let quantumExponent = Int(exponentBitPattern) &- 6176
+    let exponent = quantumExponent &+ count &- 1
+    if quantumExponent <= 0 && exponent >= 0 && exponent < 16 {
+      let unitOffset = quantumExponent &+ 33
+      for i in startOffset...unitOffset {
+        unsafe output.append(span[unchecked: i])
+      }
+      if unitOffset != 33 {
+        output.append(46 /* '.' */)
+        for i in (unitOffset &+ 1)..<34 {
+          unsafe output.append(span[unchecked: i])
+        }
+      }
+      return
+    }
+    if exponent >= -4 && exponent < 0 {
+      output.append(48 /* '0' */)
+      output.append(46 /* '.' */)
+      output.append(repeating: 48, count: -exponent &- 1)
+      for i in startOffset..<34 {
+        unsafe output.append(span[unchecked: i])
+      }
+      return
+    }
+    // Scientific notation.
+    unsafe output.append(span[unchecked: startOffset])
+    if count != 1 {
+      output.append(46 /* '.' */)
+      for i in (startOffset &+ 1)..<34 {
+        unsafe output.append(span[unchecked: i])
+      }
+    }
+    output.append(101 /* 'e' */)
+    output.append(exponent < 0 ? 45 /* '-' */ : 43 /* '+' */)
+    // Reuse the same scratch.
+    startOffset =
+      unsafe UInt64(exponent.magnitude)._ascii(&span, uncheckedEndOffset: 34)
+    for i in startOffset..<34 {
+      unsafe output.append(span[unchecked: i])
+    }
+  }
+
+  @inlinable
   public var description: String {
-    guard _isFiniteNonzero else {
-      if isSignalingNaN {
-        _signal(.invalid)
+    if isNaN {
+      if isSignalingNaN { _signal(.invalid) }
+      return "nan"
+    }
+    if isInfinite {
+      return _isSignMinus ? "-inf" : "inf"
+    }
+    if magnitude.bitPattern == Self().bitPattern {
+      return _isSignMinus ? "-0" : "0"
+    }
+    return withTemporaryAllocation(of: UInt8.self, capacity: 42) { output in
+      _description(&output)
+      let utf8 = unsafe UTF8Span(unchecked: output.span, isKnownASCII: true)
+      return String(copying: utf8)
+    }
+  }
+}
+
+@available(anyAppleOS 26.0, *)
+extension Decimal128: CustomDebugStringConvertible {
+  @inlinable
+  public var debugDescription: String {
+    if isNaN {
+      let t = _trailingSignificandBitPattern
+      if t == 0 || t >= ._1e33 {
+        if isSignalingNaN {
+          return _isSignMinus ? "-snan" : "snan"
+        }
         return _isSignMinus ? "-nan" : "nan"
       }
-
-      if isNaN {
-        return _isSignMinus ? "-nan" : "nan"
+      return withTemporaryAllocation(of: UInt8.self, capacity: 37) { output in
+        if _isSignMinus {
+          output.append( 45 /* '-' */)
+        }
+        if isSignalingNaN {
+          output.append(115 /* 's' */)
+        }
+        output.append(  110 /* 'n' */)
+        output.append(   97 /* 'a' */)
+        output.append(  110 /* 'n' */)
+        output.append(   40 /* '(' */)
+        output.append(   48 /* '0' */)
+        output.append(  120 /* 'x' */)
+        var i = (127 &- t.leadingZeroBitCount) & ~3
+        repeat {
+          let x = UInt8(truncatingIfNeeded: t &>> i) & 15
+          output.append(x &+ (x < 10 ? 48 : 87))
+          i &-= 4
+        } while i >= 0
+        output.append(   41 /* ')' */)
+        let utf8 = unsafe UTF8Span(unchecked: output.span, isKnownASCII: true)
+        return String(copying: utf8)
       }
-
-      if isInfinite {
-        return _isSignMinus ? "-inf" : "inf"
-      }
-
-      // TODO: Decide if we want to preserve quantum.
-      return _isSignMinus ? "-0." : "0."
     }
-
-    // TODO: Re-implement.
-    return String(unsafeUninitializedCapacity: 42) { buffer in
-      // We'll keep track of the index of the first uninitialized element, which
-      // we'll need to eventually return as the intiailized count.
-      var index: Int
-
-      if _isSignMinus {
-        unsafe buffer.initializeElement(at: 0, to: 45 /* '-' */)
-        index = 1
-      } else {
-        index = 0
-      }
-
-      // Since noncanonical significands are treated as zero, and values where
-      // the combination field begins `11...` have noncanonical significands,
-      // by this point we know that the represented significand is in the lower
-      // 113 bits.
-      var string = String(bitPattern & (1 &<< 113 &- 1))
-      let count = string.utf8.count
-
-      // We compute the exponent right away to determine if we need special
-      // handling for the significand.
-      let exponent = Int(_combinationBitPattern &>> 3) - 6176 + count - 1
-
-      if exponent >= 0 && exponent < min(count, 16) {
-        let x = exponent + 1
-        string.withUTF8 {
-          index = unsafe buffer[index...].initialize(fromContentsOf: $0[..<x])
-          unsafe buffer.initializeElement(at: index, to: 46 /* '.' */)
-          if x == count {
-            index += 1
-          } else {
-            index =
-              unsafe buffer[(index + 1)...].initialize(fromContentsOf: $0[x...])
-          }
-        }
-        return index
-      }
-
-      if exponent < 0 && exponent >= -4 {
-        unsafe buffer.initializeElement(at: index, to: 48 /* '0' */)
-        unsafe buffer.initializeElement(at: index + 1, to: 46 /* '.' */)
-        index =
-          unsafe buffer[(index + 2)...].initialize(
-            fromContentsOf: repeatElement(48 /* '0' */, count: -(exponent + 1)))
-        string.withUTF8 {
-          index = unsafe buffer[index...].initialize(fromContentsOf: $0)
-        }
-        return index
-      }
-
-      string.withUTF8 {
-        unsafe buffer.initializeElement(at: index, to: $0[0])
-        if count == 1 {
-          index += 1
-        } else {
-          unsafe buffer.initializeElement(at: index + 1, to: 46 /* '.' */)
-          index =
-            unsafe buffer[(index + 2)...].initialize(fromContentsOf: $0[1...])
-        }
-      }
-      unsafe buffer.initializeElement(at: index, to: 101 /* 'e' */)
-      unsafe buffer.initializeElement(
-        at: index + 1,
-        to: exponent < 0 ? 45 /* '-' */ : 43 /* '+' */)
-      string = String(abs(exponent))
-      string.withUTF8 {
-        index = unsafe buffer[(index + 2)...].initialize(fromContentsOf: $0)
-      }
-      return index
-    }
+    return description
   }
 }
 
