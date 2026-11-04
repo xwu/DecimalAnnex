@@ -211,11 +211,12 @@ extension Decimal128 {
     var sticky = sticky
     if isTiny {
       if e < -38 {
-        let (q, r) = _UInt256(hi, lo)._quotientAndRemainderDividingBy1e38()
-        if r.low != 0 { sticky = true }
+        let (q, r) =
+          UInt128._quotientAndRemainder(fullWidth: (hi, lo), dividingBy1e: 38)
+        if r != 0 { sticky = true }
         let n = -e &- 38
         divisor = ._exp10[n]
-        (quo, rem) = q.low._quotientAndRemainder(dividingBy1e: n)
+        (quo, rem) = q._quotientAndRemainder(dividingBy1e: n)
         e = 0
       } else if e < 0 {
         let n = -e
