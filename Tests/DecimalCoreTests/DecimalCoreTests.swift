@@ -152,6 +152,17 @@ struct DecimalCoreTests {
 
   @Test
   @available(anyAppleOS 26.0, *)
+  func testBinaryFloatingPointConversion() {
+    let x = 0.1
+    let y: Decimal128 = 1/10
+    #expect(Decimal128(nearest: x) != y)
+    #expect(Decimal128(nearest: x).description == "0.1000000000000000055511151231257827")
+    #expect(Decimal128(shortest: x) == y)
+    #expect(Double(nearest: y) == x)
+  }
+
+  @Test
+  @available(anyAppleOS 26.0, *)
   func testDescription() {
     let y = Decimal128(
       _sign: .minus,
