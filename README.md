@@ -16,6 +16,10 @@ It supports signed zeros, subnormal values, infinities, and NaNs, along with fam
 
 The implementation is written in native Swift. It requires no decimal floating-point hardware and has no dependency on Foundation.
 
+> [!NOTE]
+> This project is still at an early stage of development. Fused multiply-add, remainder, and square root operations are unimplemented.
+> Other operations, however, are expected to be usable, correct, and performant. Documentation and test cases lag.
+
 ## Representation
 
 Decimal floating-point values carry a *quantum*: the power of ten associated with their integer coefficient.
