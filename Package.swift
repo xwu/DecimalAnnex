@@ -21,7 +21,7 @@ let package = Package(
     .target(
       name: "DecimalCore",
       dependencies: [
-        .product(name: "Numerics", package: "swift-numerics"),
+        .product(name: "RealModule", package: "swift-numerics"),
       ],
       swiftSettings: [
           .strictMemorySafety(),
@@ -51,3 +51,7 @@ let package = Package(
   ]
 )
 
+if Context.environment["CORE_MODULE_ONLY"] == "true" {
+  package.targets.removeAll { !$0.name.hasPrefix("DecimalCore") }
+  package.products.removeAll { !$0.name.hasPrefix("DecimalCore") }
+}
