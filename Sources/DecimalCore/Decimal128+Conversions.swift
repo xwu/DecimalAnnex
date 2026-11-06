@@ -258,6 +258,183 @@ extension BinaryFloatingPoint {
 @available(anyAppleOS 26.0, *)
 extension Decimal128 {
   @inlinable
+  internal init?<T: BinaryFloatingPoint>(
+    _shortest source: T,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    let format = T._format
+    guard source.isFinite && !source.isZero else {
+      self.init(nearest: source, &flags)
+      return
+    }
+    let (m, e) = source._unpack(precision: format.precision)
+    let (d, p, inexact) =
+      _Cox.short(m, e, precision: format.precision, emin: format.emin)
+    guard d < ._1e34 && p >= -6176 && p <= 6111 else { return nil }
+    if let inexact {
+      if inexact { _signal(.inexact, into: &flags) }
+    } else {
+      // This is a somewhat costly check.
+      let u = _Cox.uscale(m, _Cox.prescale(e, -p))
+      if u != d &<< 2 { _signal(.inexact, into: &flags) }
+    }
+    self.init(
+      sign: source.sign,
+      exponentBitPattern: UInt(p &+ 6176),
+      significandBitPattern: d)
+  }
+
+  /// Creates a new decimal floating-point value with the fewest significant
+  /// digits that converts back to the given binary floating-point value with
+  /// rounding to the nearest representable value (ties to even).
+  ///
+  /// The result need not equal `source` exactly. To obtain instead a decimal
+  /// floating-point value that is the nearest possible representable value to
+  /// `source`, use `init(nearest:)`.
+  ///
+  ///     // `0.1` can't be represented exactly as `Double`;
+  ///     // instead, it's rounded from a repeating binary fraction.
+  ///     let x: Double = 0.1
+  ///     Decimal128(shortest: x)  // 0.1
+  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
+  @inline(always)
+  public init(shortest source: Float16) {
+    var flags: DecimalFloatingPointStatusFlags = []
+    self.init(_shortest: source, &flags)!
+  }
+
+  /// Creates a new decimal floating-point value with the fewest significant
+  /// digits that converts back to the given binary floating-point value with
+  /// rounding to the nearest representable value (ties to even), accumulating
+  /// status flags.
+  ///
+  /// The result need not equal `source` exactly. To obtain instead a decimal
+  /// floating-point value that is the nearest possible representable value to
+  /// `source`, use `init(nearest:)`.
+  ///
+  ///     // `0.1` can't be represented exactly as `Double`;
+  ///     // instead, it's rounded from a repeating binary fraction.
+  ///     let x: Double = 0.1
+  ///     Decimal128(shortest: x)  // 0.1
+  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  @inline(always)
+  public init(
+    shortest source: Float16,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self.init(_shortest: source, &flags)!
+  }
+
+  /// Creates a new decimal floating-point value with the fewest significant
+  /// digits that converts back to the given binary floating-point value with
+  /// rounding to the nearest representable value (ties to even).
+  ///
+  /// The result need not equal `source` exactly. To obtain instead a decimal
+  /// floating-point value that is the nearest possible representable value to
+  /// `source`, use `init(nearest:)`.
+  ///
+  ///     // `0.1` can't be represented exactly as `Double`;
+  ///     // instead, it's rounded from a repeating binary fraction.
+  ///     let x: Double = 0.1
+  ///     Decimal128(shortest: x)  // 0.1
+  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
+  @inline(always)
+  public init(shortest source: Float) {
+    var flags: DecimalFloatingPointStatusFlags = []
+    self.init(_shortest: source, &flags)!
+  }
+
+  /// Creates a new decimal floating-point value with the fewest significant
+  /// digits that converts back to the given binary floating-point value with
+  /// rounding to the nearest representable value (ties to even), accumulating
+  /// status flags.
+  ///
+  /// The result need not equal `source` exactly. To obtain instead a decimal
+  /// floating-point value that is the nearest possible representable value to
+  /// `source`, use `init(nearest:)`.
+  ///
+  ///     // `0.1` can't be represented exactly as `Double`;
+  ///     // instead, it's rounded from a repeating binary fraction.
+  ///     let x: Double = 0.1
+  ///     Decimal128(shortest: x)  // 0.1
+  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  @inline(always)
+  public init(
+    shortest source: Float,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self.init(_shortest: source, &flags)!
+  }
+
+  /// Creates a new decimal floating-point value with the fewest significant
+  /// digits that converts back to the given binary floating-point value with
+  /// rounding to the nearest representable value (ties to even).
+  ///
+  /// The result need not equal `source` exactly. To obtain instead a decimal
+  /// floating-point value that is the nearest possible representable value to
+  /// `source`, use `init(nearest:)`.
+  ///
+  ///     // `0.1` can't be represented exactly as `Double`;
+  ///     // instead, it's rounded from a repeating binary fraction.
+  ///     let x: Double = 0.1
+  ///     Decimal128(shortest: x)  // 0.1
+  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
+  @inline(always)
+  public init(shortest source: Double) {
+    var flags: DecimalFloatingPointStatusFlags = []
+    self.init(_shortest: source, &flags)!
+  }
+
+  /// Creates a new decimal floating-point value with the fewest significant
+  /// digits that converts back to the given binary floating-point value with
+  /// rounding to the nearest representable value (ties to even), accumulating
+  /// status flags.
+  ///
+  /// The result need not equal `source` exactly. To obtain instead a decimal
+  /// floating-point value that is the nearest possible representable value to
+  /// `source`, use `init(nearest:)`.
+  ///
+  ///     // `0.1` can't be represented exactly as `Double`;
+  ///     // instead, it's rounded from a repeating binary fraction.
+  ///     let x: Double = 0.1
+  ///     Decimal128(shortest: x)  // 0.1
+  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  @inline(always)
+  public init(
+    shortest source: Double,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self.init(_shortest: source, &flags)!
+  }
+}
+
+@available(anyAppleOS 26.0, *)
+extension Decimal128 {
+  @inlinable
   internal init<T: BinaryFloatingPoint>(
     _nearest source: T,
     rounding rule: _DecimalFloatingPointRoundingRule,
@@ -465,180 +642,6 @@ extension Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
     self.init(nearest: source, &flags)
     if flags.contains(.inexact) { return nil }
-  }
-
-  @inlinable
-  internal init?<T: BinaryFloatingPoint>(
-    _shortest source: T,
-    _ flags: inout DecimalFloatingPointStatusFlags
-  ) {
-    let format = T._format
-    guard source.isFinite && !source.isZero else {
-      self.init(nearest: source, &flags)
-      return
-    }
-    let (m, e) = source._unpack(precision: format.precision)
-    let (d, p, inexact) =
-      _Cox.short(m, e, precision: format.precision, emin: format.emin)
-    guard d < ._1e34 && p >= -6176 && p <= 6111 else { return nil }
-    if let inexact {
-      if inexact { _signal(.inexact, into: &flags) }
-    } else {
-      // This is a somewhat costly check.
-      let u = _Cox.uscale(m, _Cox.prescale(e, -p))
-      if u != d &<< 2 { _signal(.inexact, into: &flags) }
-    }
-    self.init(
-      sign: source.sign,
-      exponentBitPattern: UInt(p &+ 6176),
-      significandBitPattern: d)
-  }
-
-  /// Creates a new decimal floating-point value with the fewest significant
-  /// digits that converts back to the given binary floating-point value with
-  /// rounding to the nearest representable value (ties to even).
-  ///
-  /// The result need not equal `source` exactly. To obtain instead a decimal
-  /// floating-point value that is the nearest possible representable value to
-  /// `source`, use `init(nearest:)`.
-  ///
-  ///     // `0.1` can't be represented exactly as `Double`;
-  ///     // instead, it's rounded from a repeating binary fraction.
-  ///     let x: Double = 0.1
-  ///     Decimal128(shortest: x)  // 0.1
-  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
-  ///
-  /// - Parameters:
-  ///   - source: The binary floating-point value to convert.
-  @inline(always)
-  public init(shortest source: Float16) {
-    var flags: DecimalFloatingPointStatusFlags = []
-    self.init(_shortest: source, &flags)!
-  }
-
-  /// Creates a new decimal floating-point value with the fewest significant
-  /// digits that converts back to the given binary floating-point value with
-  /// rounding to the nearest representable value (ties to even), accumulating
-  /// status flags.
-  ///
-  /// The result need not equal `source` exactly. To obtain instead a decimal
-  /// floating-point value that is the nearest possible representable value to
-  /// `source`, use `init(nearest:)`.
-  ///
-  ///     // `0.1` can't be represented exactly as `Double`;
-  ///     // instead, it's rounded from a repeating binary fraction.
-  ///     let x: Double = 0.1
-  ///     Decimal128(shortest: x)  // 0.1
-  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
-  ///
-  /// - Parameters:
-  ///   - source: The binary floating-point value to convert.
-  ///   - flags: A value that accumulates decimal floating-point arithmetic
-  ///     status flags.
-  @inline(always)
-  public init(
-    shortest source: Float16,
-    _ flags: inout DecimalFloatingPointStatusFlags
-  ) {
-    self.init(_shortest: source, &flags)!
-  }
-
-  /// Creates a new decimal floating-point value with the fewest significant
-  /// digits that converts back to the given binary floating-point value with
-  /// rounding to the nearest representable value (ties to even).
-  ///
-  /// The result need not equal `source` exactly. To obtain instead a decimal
-  /// floating-point value that is the nearest possible representable value to
-  /// `source`, use `init(nearest:)`.
-  ///
-  ///     // `0.1` can't be represented exactly as `Double`;
-  ///     // instead, it's rounded from a repeating binary fraction.
-  ///     let x: Double = 0.1
-  ///     Decimal128(shortest: x)  // 0.1
-  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
-  ///
-  /// - Parameters:
-  ///   - source: The binary floating-point value to convert.
-  @inline(always)
-  public init(shortest source: Float) {
-    var flags: DecimalFloatingPointStatusFlags = []
-    self.init(_shortest: source, &flags)!
-  }
-
-  /// Creates a new decimal floating-point value with the fewest significant
-  /// digits that converts back to the given binary floating-point value with
-  /// rounding to the nearest representable value (ties to even), accumulating
-  /// status flags.
-  ///
-  /// The result need not equal `source` exactly. To obtain instead a decimal
-  /// floating-point value that is the nearest possible representable value to
-  /// `source`, use `init(nearest:)`.
-  ///
-  ///     // `0.1` can't be represented exactly as `Double`;
-  ///     // instead, it's rounded from a repeating binary fraction.
-  ///     let x: Double = 0.1
-  ///     Decimal128(shortest: x)  // 0.1
-  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
-  ///
-  /// - Parameters:
-  ///   - source: The binary floating-point value to convert.
-  ///   - flags: A value that accumulates decimal floating-point arithmetic
-  ///     status flags.
-  @inline(always)
-  public init(
-    shortest source: Float,
-    _ flags: inout DecimalFloatingPointStatusFlags
-  ) {
-    self.init(_shortest: source, &flags)!
-  }
-
-  /// Creates a new decimal floating-point value with the fewest significant
-  /// digits that converts back to the given binary floating-point value with
-  /// rounding to the nearest representable value (ties to even).
-  ///
-  /// The result need not equal `source` exactly. To obtain instead a decimal
-  /// floating-point value that is the nearest possible representable value to
-  /// `source`, use `init(nearest:)`.
-  ///
-  ///     // `0.1` can't be represented exactly as `Double`;
-  ///     // instead, it's rounded from a repeating binary fraction.
-  ///     let x: Double = 0.1
-  ///     Decimal128(shortest: x)  // 0.1
-  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
-  ///
-  /// - Parameters:
-  ///   - source: The binary floating-point value to convert.
-  @inline(always)
-  public init(shortest source: Double) {
-    var flags: DecimalFloatingPointStatusFlags = []
-    self.init(_shortest: source, &flags)!
-  }
-
-  /// Creates a new decimal floating-point value with the fewest significant
-  /// digits that converts back to the given binary floating-point value with
-  /// rounding to the nearest representable value (ties to even), accumulating
-  /// status flags.
-  ///
-  /// The result need not equal `source` exactly. To obtain instead a decimal
-  /// floating-point value that is the nearest possible representable value to
-  /// `source`, use `init(nearest:)`.
-  ///
-  ///     // `0.1` can't be represented exactly as `Double`;
-  ///     // instead, it's rounded from a repeating binary fraction.
-  ///     let x: Double = 0.1
-  ///     Decimal128(shortest: x)  // 0.1
-  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
-  ///
-  /// - Parameters:
-  ///   - source: The binary floating-point value to convert.
-  ///   - flags: A value that accumulates decimal floating-point arithmetic
-  ///     status flags.
-  @inline(always)
-  public init(
-    shortest source: Double,
-    _ flags: inout DecimalFloatingPointStatusFlags
-  ) {
-    self.init(_shortest: source, &flags)!
   }
 }
 
