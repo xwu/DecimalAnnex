@@ -14,14 +14,18 @@ public struct DecimalFloatingPointStatusFlags:
   /// This status flag is raised if there is no "usefully definable" result.
   /// For example: 0 × ∞ or ∞ ÷ ∞.
   @inline(always)
-  public static var invalid: Self { Self(rawValue: 1) }
+  public static var invalid: DecimalFloatingPointStatusFlags {
+    Self(rawValue: 1)
+  }
 
   /// Division by zero.
   ///
   /// This status flag is raised for an exact infinite result from finite
   /// operands. For example: 1 ÷ 0.
   @inline(always)
-  public static var divisionByZero: Self { Self(rawValue: 2) }
+  public static var divisionByZero: DecimalFloatingPointStatusFlags {
+    Self(rawValue: 2)
+  }
 
   /// Overflow.
   ///
@@ -32,9 +36,11 @@ public struct DecimalFloatingPointStatusFlags:
   /// Overflow is determined *after* rounding the notional exact result to the
   /// destination precision with unbounded exponent range.
   ///
-  /// See also: ``.overflowInexact``
+  /// See also: ``overflowInexact``
   @inline(always)
-  public static var overflow: Self { Self(rawValue: 4) }
+  public static var overflow: DecimalFloatingPointStatusFlags {
+    Self(rawValue: 4)
+  }
 
   /// Underflow.
   ///
@@ -46,9 +52,11 @@ public struct DecimalFloatingPointStatusFlags:
   /// Underflow is determined *before* rounding the notional exact result with
   /// unbounded precision and exponent range.
   ///
-  /// See also: ``.underflowInexact``
+  /// See also: ``underflowInexact``
   @inline(always)
-  public static var underflow: Self { Self(rawValue: 8) }
+  public static var underflow: DecimalFloatingPointStatusFlags {
+    Self(rawValue: 8)
+  }
 
   /// Inexact.
   ///
@@ -56,19 +64,25 @@ public struct DecimalFloatingPointStatusFlags:
   /// notional exact result with unbounded precision and exponent range. For
   /// example: the result of 1 ÷ 3.
   @inline(always)
-  public static var inexact: Self { Self(rawValue: 16) }
+  public static var inexact: DecimalFloatingPointStatusFlags {
+    Self(rawValue: 16)
+  }
 
   /// Overflow and inexact.
   ///
-  /// See also: ``.overflow``, ``.inexact``
+  /// See also: ``overflow``, ``inexact``
   @inline(always)
-  public static var overflowInexact: Self { [.overflow, .inexact] }
+  public static var overflowInexact: DecimalFloatingPointStatusFlags {
+    [.overflow, .inexact]
+  }
 
   /// Underflow and inexact.
   ///
-  /// See also: ``.underflow``, ``.inexact``
+  /// See also: ``underflow``, ``inexact``
   @inline(always)
-  public static var underflowInexact: Self { [.underflow, .inexact] }
+  public static var underflowInexact: DecimalFloatingPointStatusFlags {
+    [.underflow, .inexact]
+  }
 }
 
 @inlinable
