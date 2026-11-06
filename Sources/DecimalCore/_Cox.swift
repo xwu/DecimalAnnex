@@ -99,6 +99,24 @@ extension _Cox {
   }
 
   @inlinable
+  @inline(always)
+  internal static func round(
+    isSignMinus: Bool,
+    _ u: UInt128,
+    _ rule: _DecimalFloatingPointRoundingRule
+  ) -> UInt128 {
+    let q = u &>> 2
+    return q &+
+      (Decimal128._roundsAway(
+        isSignMinus: isSignMinus,
+        significand: q,
+        digit: u & 2 != 0 ? 5 : 0,
+        sticky: u & 1 != 0,
+        rule
+      ) ? 1 : 0)
+  }
+
+  @inlinable
   internal static func trimZeros(_ x: UInt128, _ p: Int) -> (UInt128, Int) {
     // See also `Decimal128._select`.
     assert(x != 0)
@@ -164,18 +182,22 @@ extension _Cox {
   @inlinable
   internal static func fixed(
     width: Int,
+    isSignMinus: Bool,
     _ m: UInt128,
     _ e: Int,
+    _ rule: _DecimalFloatingPointRoundingRule
   ) -> (d: UInt128, p: Int, inexact: Bool) {
     assert(m & (1 &<< 127) != 0 && (1...34).contains(width))
     var p = width &- 1 &- log10pow2(e &+ 127)
     var u = uscale(m, prescale(e, p))
-    if unsafe round(u) >= ._exp10[unchecked: width] {
+    if unsafe round(
+      isSignMinus: isSignMinus, u, rule
+    ) >= ._exp10[unchecked: width] {
       let (q, r) = u.quotientAndRemainder(dividingBy: 10)
       u = q | (r != 0 ? 1 : 0) | (u & 1)
       p &-= 1
     }
-    return (round(u), -p, u & 3 != 0)
+    return (round(isSignMinus: isSignMinus, u, rule), -p, u & 3 != 0)
   }
 
   @inlinable

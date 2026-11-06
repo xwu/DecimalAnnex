@@ -257,36 +257,10 @@ extension BinaryFloatingPoint {
 
 @available(anyAppleOS 26.0, *)
 extension Decimal128 {
-  /// Creates a new decimal floating-point value from the given binary
-  /// floating-point value, rounding to the nearest representable value
-  /// (ties to even) if needed and accumulating status flags.
-  ///
-  /// For an exact finite result, the represented exponent is as close to zero
-  /// as possible without changing the value.
-  ///
-  /// This initializer implements the `convertFormat` operation defined by
-  /// the IEEE 754 specification.
-  ///
-  /// To obtain instead a decimal floating-point value with the fewest
-  /// significant digits that converts back to `source`, use `init(shortest:)`
-  /// with an argument of type `Float16`, `Float`, or `Double`.
-  ///
-  ///     // `0.1` can't be represented exactly as `Double`;
-  ///     // instead, it's rounded from a repeating binary fraction.
-  ///     let x: Double = 0.1
-  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
-  ///     Decimal128(shortest: x)  // 0.1
-  ///
-  /// - Parameters:
-  ///   - source: The binary floating-point value to convert.
-  ///   - flags: A value that accumulates decimal floating-point arithmetic
-  ///     status flags.
-  /// - Precondition: The binary format has 2 through 113 bits of significand
-  ///   precision, normal exponent range within `-16382...16383`, and gradual
-  ///   underflow.
   @inlinable
-  public init<T: BinaryFloatingPoint>(
-    nearest source: T,
+  internal init<T: BinaryFloatingPoint>(
+    _nearest source: T,
+    rounding rule: _DecimalFloatingPointRoundingRule,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) {
     let format = T._format
@@ -318,7 +292,8 @@ extension Decimal128 {
     var d: UInt128
     let p: Int
     let inexact: Bool
-    (d, p, inexact) = _Cox.fixed(width: 34, m, e)
+    (d, p, inexact) =
+      _Cox.fixed(width: 34, isSignMinus: source.sign == .minus, m, e, rule)
     var biasedExponent = p &+ 6176
     if inexact {
       _signal(.inexact, into: &flags)
@@ -362,7 +337,114 @@ extension Decimal128 {
   @inline(always)
   public init<T: BinaryFloatingPoint>(nearest source: T) {
     var flags: DecimalFloatingPointStatusFlags = []
-    self.init(nearest: source, &flags)
+    self.init(_nearest: source, rounding: .toNearestOrEven, &flags)
+  }
+
+  /// Creates a new decimal floating-point value from the given binary
+  /// floating-point value, rounding to the nearest representable value
+  /// (ties to even) if needed and accumulating status flags.
+  ///
+  /// For an exact finite result, the represented exponent is as close to zero
+  /// as possible without changing the value.
+  ///
+  /// This initializer implements the `convertFormat` operation defined by
+  /// the IEEE 754 specification.
+  ///
+  /// To obtain instead a decimal floating-point value with the fewest
+  /// significant digits that converts back to `source`, use `init(shortest:)`
+  /// with an argument of type `Float16`, `Float`, or `Double`.
+  ///
+  ///     // `0.1` can't be represented exactly as `Double`;
+  ///     // instead, it's rounded from a repeating binary fraction.
+  ///     let x: Double = 0.1
+  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
+  ///     Decimal128(shortest: x)  // 0.1
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Precondition: The binary format has 2 through 113 bits of significand
+  ///   precision, normal exponent range within `-16382...16383`, and gradual
+  ///   underflow.
+  @inline(always)
+  public init<T: BinaryFloatingPoint>(
+    nearest source: T,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self.init(_nearest: source, rounding: .toNearestOrEven, &flags)
+  }
+
+  /// Creates a new decimal floating-point value from the given binary
+  /// floating-point value, rounding to a representable value using the given
+  /// rounding rule if needed.
+  ///
+  /// For an exact finite result, the represented exponent is as close to zero
+  /// as possible without changing the value.
+  ///
+  /// This initializer implements the `convertFormat` operation defined by
+  /// the IEEE 754 specification.
+  ///
+  /// To obtain instead a decimal floating-point value with the fewest
+  /// significant digits that converts back to `source`, use `init(shortest:)`
+  /// with an argument of type `Float16`, `Float`, or `Double`.
+  ///
+  ///     // `0.1` can't be represented exactly as `Double`;
+  ///     // instead, it's rounded from a repeating binary fraction.
+  ///     let x: Double = 0.1
+  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
+  ///     Decimal128(shortest: x)  // 0.1
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
+  ///   - rule: The rounding rule to use for an inexact result.
+  /// - Precondition: The binary format has 2 through 113 bits of significand
+  ///   precision, normal exponent range within `-16382...16383`, and gradual
+  ///   underflow.
+  @inlinable
+  public init<T: BinaryFloatingPoint>(
+    nearest source: T,
+    rounding rule: FloatingPointRoundingRule
+  ) {
+    var flags: DecimalFloatingPointStatusFlags = []
+    self.init(_nearest: source, rounding: .init(rule), &flags)
+  }
+
+  /// Creates a new decimal floating-point value from the given binary
+  /// floating-point value, rounding to a representable value using the given
+  /// rounding rule if needed and accumulating status flags.
+  ///
+  /// For an exact finite result, the represented exponent is as close to zero
+  /// as possible without changing the value.
+  ///
+  /// This initializer implements the `convertFormat` operation defined by
+  /// the IEEE 754 specification.
+  ///
+  /// To obtain instead a decimal floating-point value with the fewest
+  /// significant digits that converts back to `source`, use `init(shortest:)`
+  /// with an argument of type `Float16`, `Float`, or `Double`.
+  ///
+  ///     // `0.1` can't be represented exactly as `Double`;
+  ///     // instead, it's rounded from a repeating binary fraction.
+  ///     let x: Double = 0.1
+  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
+  ///     Decimal128(shortest: x)  // 0.1
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Precondition: The binary format has 2 through 113 bits of significand
+  ///   precision, normal exponent range within `-16382...16383`, and gradual
+  ///   underflow.
+  @inlinable
+  public init<T: BinaryFloatingPoint>(
+    nearest source: T,
+    rounding rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self.init(_nearest: source, rounding: .init(rule), &flags)
   }
 
   /// Creates a new decimal floating-point value from the given binary
