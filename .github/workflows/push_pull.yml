@@ -1,0 +1,29 @@
+name: Push or pull
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    name: Swift on ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v7
+    - name: Build
+      env:
+        CORE_MODULE_ONLY: "true"
+      run: swift build -v
+    - name: Run tests
+      env:
+        CORE_MODULE_ONLY: "true"
+      run: swift test -v
