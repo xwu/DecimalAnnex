@@ -82,12 +82,37 @@ extension Decimal128 {
       &flags)
   }
 
+  /// Creates a new value from the given integer, rounding to the nearest
+  /// representable value (ties to even) if needed.
+  ///
+  /// For an exact result, the represented exponent is as close to zero as
+  /// possible without changing the value.
+  ///
+  /// This initializer implements the `convertFromInt` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - source: The integer to convert.
   @inline(always)
   public init<T: BinaryInteger>(_ source: T) {
     var flags: DecimalFloatingPointStatusFlags = []
     self.init(source, _rounding: .toNearestOrEven, &flags)
   }
 
+  /// Creates a new value from the given integer, rounding to the nearest
+  /// representable value (ties to even) if needed and accumulating status
+  /// flags.
+  ///
+  /// For an exact result, the represented exponent is as close to zero as
+  /// possible without changing the value.
+  ///
+  /// This initializer implements the `convertFromInt` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - source: The integer to convert.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public init<T: BinaryInteger>(
     _ source: T,
@@ -96,6 +121,18 @@ extension Decimal128 {
     self.init(source, _rounding: .toNearestOrEven, &flags)
   }
 
+  /// Creates a new value from the given integer, rounding to a representable
+  /// value using the given rounding rule if needed.
+  ///
+  /// For an exact result, the represented exponent is as close to zero as
+  /// possible without changing the value.
+  ///
+  /// This initializer implements the `convertFromInt` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - source: The integer to convert.
+  ///   - rule: The rounding rule to use for an inexact result.
   @inline(always)
   public init<T: BinaryInteger>(
     _ source: T,
@@ -105,6 +142,21 @@ extension Decimal128 {
     self.init(source, _rounding: .init(rule), &flags)
   }
 
+  /// Creates a new value from the given integer, rounding to a representable
+  /// value using the given rounding rule if needed and accumulating status
+  /// flags.
+  ///
+  /// For an exact result, the represented exponent is as close to zero as
+  /// possible without changing the value.
+  ///
+  /// This initializer implements the `convertFromInt` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - source: The integer to convert.
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public init<T: BinaryInteger>(
     _ source: T,
@@ -133,6 +185,8 @@ extension BinaryFloatingPoint {
     return (precision, emin, emax)
   }
 
+  /// Returns this value's magnitude as `m * 2**e`, with the highest bit of `m`
+  /// always set. The value must be finite and nonzero.
   @inlinable
   internal func _unpack(precision: Int) -> (m: UInt128, e: Int) {
     assert(isFinite && !isZero)
@@ -142,12 +196,45 @@ extension BinaryFloatingPoint {
     return (m, Int(exponent) &- 127)
   }
 
+  /// Creates a new binary floating-point value from the given decimal
+  /// floating-point value, rounding to the nearest representable value
+  /// (ties to even) if needed.
+  ///
+  /// This initializer implements the `convertFormat` operation defined by the
+  /// IEEE 754 specification (other than reporting status flags).
+  ///
+  /// - Parameters:
+  ///   - source: The decimal floating-point value to convert.
+  /// - Precondition: The binary format has 2 through 113 bits of significand
+  ///   precision, normal exponent range within `-16382...16383`, and gradual
+  ///   underflow.
   @inlinable
   public init(nearest source: Decimal128) {
     let format = Self._format
     guard source._isFiniteNonzero else {
       if source.isNaN {
-        self = source._isSignMinus ? -.nan : .nan
+#if false
+        // IEEE standard convention.
+        let mask = UInt128(
+          truncatingIfNeeded: Self.greatestFiniteMagnitude.significandBitPattern
+            & ~Self.nan.significandBitPattern)
+#else
+        // Swift convention, masking out an additional bit.
+        let mask = UInt128(
+          truncatingIfNeeded: Self.greatestFiniteMagnitude.significandBitPattern
+            & ~(Self.nan.significandBitPattern
+              | Self.signalingNaN.significandBitPattern))
+#endif
+        let payload = source._trailingSignificandBitPattern
+        guard payload < ._1e33 && payload & ~mask == 0 else {
+          self = source._isSignMinus ? -.nan : .nan
+          return
+        }
+        self.init(
+          sign: source.sign,
+          exponentBitPattern: Self.nan.exponentBitPattern,
+          significandBitPattern:
+            Self.nan.significandBitPattern | .init(truncatingIfNeeded: payload))
         return
       }
       if source.isInfinite {
@@ -170,6 +257,33 @@ extension BinaryFloatingPoint {
 
 @available(anyAppleOS 26.0, *)
 extension Decimal128 {
+  /// Creates a new decimal floating-point value from the given binary
+  /// floating-point value, rounding to the nearest representable value
+  /// (ties to even) if needed and accumulating status flags.
+  ///
+  /// For an exact finite result, the represented exponent is as close to zero
+  /// as possible without changing the value.
+  ///
+  /// This initializer implements the `convertFormat` operation defined by
+  /// the IEEE 754 specification.
+  ///
+  /// To obtain instead a decimal floating-point value with the fewest
+  /// significant digits that converts back to `source`, use `init(shortest:)`
+  /// with an argument of type `Float16`, `Float`, or `Double`.
+  ///
+  ///     // `0.1` can't be represented exactly as `Double`;
+  ///     // instead, it's rounded from a repeating binary fraction.
+  ///     let x: Double = 0.1
+  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
+  ///     Decimal128(shortest: x)  // 0.1
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Precondition: The binary format has 2 through 113 bits of significand
+  ///   precision, normal exponent range within `-16382...16383`, and gradual
+  ///   underflow.
   @inlinable
   public init<T: BinaryFloatingPoint>(
     nearest source: T,
@@ -178,7 +292,18 @@ extension Decimal128 {
     let format = T._format
     if source.isNaN {
       if source.isSignalingNaN { _signal(.invalid, into: &flags) }
-      self = source.sign == .minus ? -.nan : .nan
+#if false
+      // IEEE standard convention.
+      let mask = ~T.nan.significandBitPattern
+#else
+      // Swift convention, masking out an additional bit.
+      let mask =
+        ~(T.nan.significandBitPattern | T.signalingNaN.significandBitPattern)
+#endif
+      let payload =
+        UInt128(truncatingIfNeeded: source.significandBitPattern & mask)
+      self.init(nan: payload < ._1e33 ? payload : 0, signaling: false)
+      if source.sign == .minus { negate() }
       return
     }
     if source.isInfinite {
@@ -209,12 +334,49 @@ extension Decimal128 {
       significandBitPattern: d)
   }
 
+  /// Creates a new decimal floating-point value from the given binary
+  /// floating-point value, rounding to the nearest representable value
+  /// (ties to even) if needed.
+  ///
+  /// For an exact finite result, the represented exponent is as close to zero
+  /// as possible without changing the value.
+  ///
+  /// This initializer implements the `convertFormat` operation defined by
+  /// the IEEE 754 specification.
+  ///
+  /// To obtain instead a decimal floating-point value with the fewest
+  /// significant digits that converts back to `source`, use `init(shortest:)`
+  /// with an argument of type `Float16`, `Float`, or `Double`.
+  ///
+  ///     // `0.1` can't be represented exactly as `Double`;
+  ///     // instead, it's rounded from a repeating binary fraction.
+  ///     let x: Double = 0.1
+  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
+  ///     Decimal128(shortest: x)  // 0.1
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
+  /// - Precondition: The binary format has 2 through 113 bits of significand
+  ///   precision, normal exponent range within `-16382...16383`, and gradual
+  ///   underflow.
   @inline(always)
   public init<T: BinaryFloatingPoint>(nearest source: T) {
     var flags: DecimalFloatingPointStatusFlags = []
     self.init(nearest: source, &flags)
   }
 
+  /// Creates a new decimal floating-point value from the given binary
+  /// floating-point value, if it can be represented exactly.
+  ///
+  /// For an exact finite result, the represented exponent is as close to zero
+  /// as possible without changing the value. If `source` is NaN or can't be
+  /// represented exactly after conversion, the result is `nil`.
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
+  /// - Precondition: The binary format has 2 through 113 bits of significand
+  ///   precision, normal exponent range within `-16382...16383`, and gradual
+  ///   underflow.
   @inline(always)
   public init?<T: BinaryFloatingPoint>(exactly source: T) {
     if source.isNaN { return nil } 
@@ -250,12 +412,47 @@ extension Decimal128 {
       significandBitPattern: d)
   }
 
+  /// Creates a new decimal floating-point value with the fewest significant
+  /// digits that converts back to the given binary floating-point value with
+  /// rounding to the nearest representable value (ties to even).
+  ///
+  /// The result need not equal `source` exactly. To obtain instead a decimal
+  /// floating-point value that is the nearest possible representable value to
+  /// `source`, use `init(nearest:)`.
+  ///
+  ///     // `0.1` can't be represented exactly as `Double`;
+  ///     // instead, it's rounded from a repeating binary fraction.
+  ///     let x: Double = 0.1
+  ///     Decimal128(shortest: x)  // 0.1
+  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
   @inline(always)
   public init(shortest source: Float16) {
     var flags: DecimalFloatingPointStatusFlags = []
     self.init(_shortest: source, &flags)!
   }
 
+  /// Creates a new decimal floating-point value with the fewest significant
+  /// digits that converts back to the given binary floating-point value with
+  /// rounding to the nearest representable value (ties to even), accumulating
+  /// status flags.
+  ///
+  /// The result need not equal `source` exactly. To obtain instead a decimal
+  /// floating-point value that is the nearest possible representable value to
+  /// `source`, use `init(nearest:)`.
+  ///
+  ///     // `0.1` can't be represented exactly as `Double`;
+  ///     // instead, it's rounded from a repeating binary fraction.
+  ///     let x: Double = 0.1
+  ///     Decimal128(shortest: x)  // 0.1
+  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public init(
     shortest source: Float16,
@@ -264,12 +461,47 @@ extension Decimal128 {
     self.init(_shortest: source, &flags)!
   }
 
+  /// Creates a new decimal floating-point value with the fewest significant
+  /// digits that converts back to the given binary floating-point value with
+  /// rounding to the nearest representable value (ties to even).
+  ///
+  /// The result need not equal `source` exactly. To obtain instead a decimal
+  /// floating-point value that is the nearest possible representable value to
+  /// `source`, use `init(nearest:)`.
+  ///
+  ///     // `0.1` can't be represented exactly as `Double`;
+  ///     // instead, it's rounded from a repeating binary fraction.
+  ///     let x: Double = 0.1
+  ///     Decimal128(shortest: x)  // 0.1
+  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
   @inline(always)
   public init(shortest source: Float) {
     var flags: DecimalFloatingPointStatusFlags = []
     self.init(_shortest: source, &flags)!
   }
 
+  /// Creates a new decimal floating-point value with the fewest significant
+  /// digits that converts back to the given binary floating-point value with
+  /// rounding to the nearest representable value (ties to even), accumulating
+  /// status flags.
+  ///
+  /// The result need not equal `source` exactly. To obtain instead a decimal
+  /// floating-point value that is the nearest possible representable value to
+  /// `source`, use `init(nearest:)`.
+  ///
+  ///     // `0.1` can't be represented exactly as `Double`;
+  ///     // instead, it's rounded from a repeating binary fraction.
+  ///     let x: Double = 0.1
+  ///     Decimal128(shortest: x)  // 0.1
+  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public init(
     shortest source: Float,
@@ -278,12 +510,47 @@ extension Decimal128 {
     self.init(_shortest: source, &flags)!
   }
 
+  /// Creates a new decimal floating-point value with the fewest significant
+  /// digits that converts back to the given binary floating-point value with
+  /// rounding to the nearest representable value (ties to even).
+  ///
+  /// The result need not equal `source` exactly. To obtain instead a decimal
+  /// floating-point value that is the nearest possible representable value to
+  /// `source`, use `init(nearest:)`.
+  ///
+  ///     // `0.1` can't be represented exactly as `Double`;
+  ///     // instead, it's rounded from a repeating binary fraction.
+  ///     let x: Double = 0.1
+  ///     Decimal128(shortest: x)  // 0.1
+  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
   @inline(always)
   public init(shortest source: Double) {
     var flags: DecimalFloatingPointStatusFlags = []
     self.init(_shortest: source, &flags)!
   }
 
+  /// Creates a new decimal floating-point value with the fewest significant
+  /// digits that converts back to the given binary floating-point value with
+  /// rounding to the nearest representable value (ties to even), accumulating
+  /// status flags.
+  ///
+  /// The result need not equal `source` exactly. To obtain instead a decimal
+  /// floating-point value that is the nearest possible representable value to
+  /// `source`, use `init(nearest:)`.
+  ///
+  ///     // `0.1` can't be represented exactly as `Double`;
+  ///     // instead, it's rounded from a repeating binary fraction.
+  ///     let x: Double = 0.1
+  ///     Decimal128(shortest: x)  // 0.1
+  ///     Decimal128(nearest: x)   // 0.1000000000000000055511151231257827
+  ///
+  /// - Parameters:
+  ///   - source: The binary floating-point value to convert.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public init(
     shortest source: Double,
@@ -427,6 +694,12 @@ extension Decimal128: CustomStringConvertible {
     }
   }
 
+  /// A textual representation of this value.
+  ///
+  /// Finite values retain their quantum, including trailing zeros.
+  ///
+  /// This property implements the `convertToDecimalCharacter` operation
+  /// defined by the IEEE 754 specification.
   @inlinable
   public var description: String {
     if isNaN {
@@ -449,6 +722,14 @@ extension Decimal128: CustomStringConvertible {
 
 @available(anyAppleOS 26.0, *)
 extension Decimal128: CustomDebugStringConvertible {
+  /// A textual representation of this value, suitable for debugging.
+  ///
+  /// Finite values retain their quantum, including trailing zeros.
+  /// This property distinguishes quiet and signaling NaNs, preserves their
+  /// sign, and includes any nonzero canonical payload.
+  ///
+  /// This property implements the `convertToDecimalCharacter` operation
+  /// defined by the IEEE 754 specification.
   @inlinable
   public var debugDescription: String {
     if isNaN {
@@ -839,12 +1120,57 @@ extension Decimal128: LosslessStringConvertible {
     return nil
   }
 
+  /// Creates a new value from the given string representation,
+  /// rounding to the nearest representable value (ties to even) if needed.
+  ///
+  /// The string passed as `description` may begin with an optional plus (`+`)
+  /// or hyphen-minus (`-`) sign character, followed by a significand that must
+  /// have at least one numeric digit (`0`-`9`) and may have a decimal separator
+  /// period (`.`), followed optionally by an exponent introduced by `e` or `E`.
+  ///
+  /// Case-insensitive `inf` (or `infinity`), `nan`, and `snan` are also
+  /// accepted following an optional sign character (denoting infinity, quiet
+  /// NaN, and signaling NaN, respectively). NaN payloads may be specified in
+  /// parentheses.
+  ///
+  /// If `description` is in an invalid format, the result is `nil`.
+  /// For an exact finite result, the written quantum is retained when possible.
+  ///
+  /// This initializer implements the `convertFromDecimalCharacter` operation
+  /// defined by the IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - description: The ASCII string representation to convert.
   @inline(always)
   public init?<T: StringProtocol>(_ description: T) {
     var flags: DecimalFloatingPointStatusFlags = []
     self.init(description, _rounding: .toNearestOrEven, &flags)
   }
 
+  /// Creates a new value from the given string representation,
+  /// rounding to the nearest representable value (ties to even) if needed
+  /// and accumulating status flags.
+  ///
+  /// The string passed as `description` may begin with an optional plus (`+`)
+  /// or hyphen-minus (`-`) sign character, followed by a significand that must
+  /// have at least one numeric digit (`0`-`9`) and may have a decimal separator
+  /// period (`.`), followed optionally by an exponent introduced by `e` or `E`.
+  ///
+  /// Case-insensitive `inf` (or `infinity`), `nan`, and `snan` are also
+  /// accepted following an optional sign character (denoting infinity, quiet
+  /// NaN, and signaling NaN, respectively). NaN payloads may be specified in
+  /// parentheses.
+  ///
+  /// If `description` is in an invalid format, the result is `nil`.
+  /// For an exact finite result, the written quantum is retained when possible.
+  ///
+  /// This initializer implements the `convertFromDecimalCharacter` operation
+  /// defined by the IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - description: The ASCII string representation to convert.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public init?<T: StringProtocol>(
     _ description: T,
@@ -853,6 +1179,28 @@ extension Decimal128: LosslessStringConvertible {
     self.init(description, _rounding: .toNearestOrEven, &flags)
   }
 
+  /// Creates a new value from the given string representation,
+  /// rounding to a representable value using the given rounding rule if needed.
+  ///
+  /// The string passed as `description` may begin with an optional plus (`+`)
+  /// or hyphen-minus (`-`) sign character, followed by a significand that must
+  /// have at least one numeric digit (`0`-`9`) and may have a decimal separator
+  /// period (`.`), followed optionally by an exponent introduced by `e` or `E`.
+  ///
+  /// Case-insensitive `inf` (or `infinity`), `nan`, and `snan` are also
+  /// accepted following an optional sign character (denoting infinity, quiet
+  /// NaN, and signaling NaN, respectively). NaN payloads may be specified in
+  /// parentheses.
+  ///
+  /// If `description` is in an invalid format, the result is `nil`.
+  /// For an exact finite result, the written quantum is retained when possible.
+  ///
+  /// This initializer implements the `convertFromDecimalCharacter` operation
+  /// defined by the IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - description: The ASCII string representation to convert.
+  ///   - rule: The rounding rule to use for an inexact result.
   @inline(always)
   public init?<T: StringProtocol>(
     _ description: T,
@@ -862,6 +1210,31 @@ extension Decimal128: LosslessStringConvertible {
     self.init(description, _rounding: .init(rule), &flags)
   }
 
+  /// Creates a new value from the given string representation,
+  /// rounding to a representable value using the given rounding rule if needed
+  /// and accumulating status flags.
+  ///
+  /// The string passed as `description` may begin with an optional plus (`+`)
+  /// or hyphen-minus (`-`) sign character, followed by a significand that must
+  /// have at least one numeric digit (`0`-`9`) and may have a decimal separator
+  /// period (`.`), followed optionally by an exponent introduced by `e` or `E`.
+  ///
+  /// Case-insensitive `inf` (or `infinity`), `nan`, and `snan` are also
+  /// accepted following an optional sign character (denoting infinity, quiet
+  /// NaN, and signaling NaN, respectively). NaN payloads may be specified in
+  /// parentheses.
+  ///
+  /// If `description` is in an invalid format, the result is `nil`.
+  /// For an exact finite result, the written quantum is retained when possible.
+  ///
+  /// This initializer implements the `convertFromDecimalCharacter` operation
+  /// defined by the IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - description: The ASCII string representation to convert.
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public init?<T: StringProtocol>(
     _ description: T,

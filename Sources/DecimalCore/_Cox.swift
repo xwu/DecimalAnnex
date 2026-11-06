@@ -1,3 +1,10 @@
+// Conversion between binary and decimal formats using Cox's unrounded scaling:
+// https://research.swtch.com/fp
+//
+// For an "unrounded" value `u`, `u >> 2` is the integer part, bit 1 is the half
+// bit, and bit 0 is the sticky bit--i.e., the OR of all lower bits.
+//
+// See the original reference (and accompanying proof) for details.
 @frozen
 public enum _Cox { }
 
@@ -61,6 +68,7 @@ extension _Cox {
     return _reconstruct_pow10(x)
   }
 
+  // Computes `floor(log2(10**x))` throughout the asserted range.
   @inlinable
   @inline(always)
   internal static func log2pow10(_ x: Int) -> Int {
@@ -68,6 +76,7 @@ extension _Cox {
     return Int((Int64(x) &* 55732705) &>> 24)
   }
 
+  // Computes `floor(log10(2**x))` throughout the asserted range.
   @inlinable
   @inline(always)
   internal static func log10pow2(_ x: Int) -> Int {
@@ -75,6 +84,7 @@ extension _Cox {
     return Int((Int64(x) &* 20201781) &>> 26)
   }
 
+  // Computes `floor(log10(3/4 * 2**x))` throughout the asserted range.
   @inlinable
   @inline(always)
   internal static func skewed(_ x: Int) -> Int {
