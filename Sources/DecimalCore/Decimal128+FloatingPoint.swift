@@ -360,12 +360,81 @@ extension Decimal128: FloatingPoint {
     let ac = a.isZero ? 0 : a.significandBitPattern
     if ac != 0 {
       let n = ae &- bce
-      if n >= 70 {
+      if n >= 69 {
         let logac = ac._commonLogarithm
         // Without computing the product, we know it has at most 68 digits,
         // and hence `log10(product)` is at most 67.
-        if n &+ logac &- 67 >= 36 {
-          // TODO: Continue here.
+        let underestimate = n &+ logac &- 67
+        if underestimate >= 35 {
+          var e_ = max(0, ae &+ logac &- 33)
+          var c_ = unsafe ac &* ._exp10[unchecked: ae &- e_]
+          let bcs = b._isSignMinus != c._isSignMinus
+          let isTiny =
+            e_ == 0 && (c_ < ._1e33 || (c_ == ._1e33 && bcs != a._isSignMinus))
+          if bcs == a._isSignMinus {
+            let nextAway: Bool =
+              switch rule {
+              case .toNearestOrEven, .toNearestOrAwayFromZero:
+                false
+              case .towardZero:
+                false
+              case .awayFromZero:
+                true
+              case .down:
+                bcs
+              case .up:
+                !bcs
+              @unknown default:
+                fatalError("Unknown rounding rule.")
+              }
+            if nextAway {
+              if c_ == ._1e34 &- 1 {
+                if e_ == 12287 {
+                  _signal(.overflowInexact, into: &flags)
+                  return bcs ? -.infinity : .infinity
+                }
+                c_ = ._1e33
+                e_ &+= 1
+              } else {
+                c_ &+= 1
+              }
+            }
+          } else {
+            let nextToward: Bool =
+              switch rule {
+              case .toNearestOrEven, .toNearestOrAwayFromZero:
+                underestimate == 35 && c_ == ._1e33 && e_ != 0 &&
+                  b.significandBitPattern.multipliedFullWidth(
+                    by: c.significandBitPattern) >
+                  UInt128._1e34.multipliedFullWidth(by: ._1e34 &>> 1)
+              case .towardZero:
+                true
+              case .awayFromZero:
+                false
+              case .down:
+                bcs
+              case .up:
+                !bcs
+              @unknown default:
+                fatalError("Unknown rounding rule.")
+              }
+            if nextToward {
+              if c_ == ._1e33 && e_ != 0 {
+                c_ = ._1e34 &- 1
+                e_ &-= 1
+              } else {
+                c_ &-= 1
+              }
+            }
+          }
+          let abs =
+            Self(bitPattern: UInt128(truncatingIfNeeded: e_) &<< 113 | c_)
+          if isTiny {
+            _signal(.underflowInexact, into: &flags)
+          } else {
+            _signal(.inexact, into: &flags)
+          }
+          return a._isSignMinus ? -abs : abs
         }
       }
     }
