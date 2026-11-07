@@ -158,7 +158,7 @@ extension Decimal128 {
   /// closest to `preferredBiasedExponent ?? biasedExponent` (after clamping to
   /// the encodable exponent range).
   ///
-  /// - Precondition: `significand` is less than `1e68`; if `sticky` is `true`,
+  /// - Precondition: `significand` is less than `1e69`; if `sticky` is `true`,
   ///   `significand` is at least `1e34`.
   @inlinable
   internal static func _pack(
@@ -174,7 +174,7 @@ extension Decimal128 {
     let pe = min(12287, max(0, preferredBiasedExponent ?? e))
     let (hi, lo) = significand
     assert(!sticky || (hi, lo) >= (0, ._1e34))
-    assert((hi, lo) < UInt128._1e34.multipliedFullWidth(by: ._1e34))
+    assert((hi, lo) < UInt128._1e34.multipliedFullWidth(by: ._exp10[35]))
     if (hi, lo) == (0, 0) {
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: pe) &<< 113)
       return isSignMinus ? -abs : abs
@@ -182,7 +182,7 @@ extension Decimal128 {
     if e > 12320 {
       return _overflow(isSignMinus: isSignMinus, rule, &flags)
     }
-    if e < -68 {
+    if e < -69 {
       let nextAway = _roundsAway(
         isSignMinus: isSignMinus,
         significand: 0,
@@ -195,7 +195,7 @@ extension Decimal128 {
     }
 
     // Per IEEE 754, detect tininess (i.e., underflow) before rounding.
-    let isTiny: Bool = if e < -34 {
+    let isTiny: Bool = if e < -35 {
       true
     } else if e < -5 {
       unsafe hi == 0 || (hi, lo) <

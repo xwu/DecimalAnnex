@@ -366,6 +366,7 @@ extension Decimal128: FloatingPoint {
         // and hence `log10(product)` is at most 67.
         let underestimate = n &+ logac &- 67
         if underestimate >= 35 {
+          // Inexact.
           var e_ = max(0, ae &+ logac &- 33)
           var c_ = unsafe ac &* ._exp10[unchecked: ae &- e_]
           let bcs = b._isSignMinus != c._isSignMinus
@@ -400,24 +401,30 @@ extension Decimal128: FloatingPoint {
               }
             }
           } else {
-            let nextToward: Bool =
-              switch rule {
-              case .toNearestOrEven, .toNearestOrAwayFromZero:
-                underestimate == 35 && c_ == ._1e33 && e_ != 0 &&
-                  b.significandBitPattern.multipliedFullWidth(
-                    by: c.significandBitPattern) >
-                  UInt128._1e34.multipliedFullWidth(by: ._1e34 &>> 1)
-              case .towardZero:
-                true
-              case .awayFromZero:
-                false
-              case .down:
-                bcs
-              case .up:
-                !bcs
-              @unknown default:
-                fatalError("Unknown rounding rule.")
+            let nextToward: Bool
+            switch rule {
+            case .toNearestOrEven, .toNearestOrAwayFromZero:
+              if underestimate == 35 && c_ == ._1e33 && e_ != 0 {
+                let _5e33: UInt128 = ._1e34 &>> 1
+                let bc = b.significandBitPattern
+                let cc = c.significandBitPattern
+                nextToward = bc > _5e33 && cc > _5e33 &&
+                  bc.multipliedFullWidth(by: cc) >
+                    _5e33.multipliedFullWidth(by: ._1e34)
+              } else {
+                nextToward = false
               }
+            case .towardZero:
+              nextToward = true
+            case .awayFromZero:
+              nextToward = false
+            case .down:
+              nextToward = bcs
+            case .up:
+              nextToward = !bcs
+            @unknown default:
+              fatalError("Unknown rounding rule.")
+            }
             if nextToward {
               if c_ == ._1e33 && e_ != 0 {
                 c_ = ._1e34 &- 1
@@ -456,6 +463,7 @@ extension Decimal128: FloatingPoint {
         bitPattern: UInt128(truncatingIfNeeded: bce) &<< 113 | product.low)
       return a._adding(isSignMinus ? -abs : abs, rounding: rule, &flags)
     }
+
     let pe = min(ae, bce)
     if ac == 0 {
       return ._pack(
@@ -467,7 +475,41 @@ extension Decimal128: FloatingPoint {
         &flags)
     }
 
-    fatalError("Not implemented")
+    let bcs = b._isSignMinus != c._isSignMinus
+    var isSignMinus: Bool
+    var c_: (high: UInt128, low: UInt128)
+    var e_: Int
+    var sticky = false
+    if ae == bce {
+      e_ = pe
+      if bcs == a._isSignMinus {
+        let carry: Bool
+        (c_.low, carry) = product.low.addingReportingOverflow(ac)
+        c_.high = product.high &+ (carry ? 1 : 0)
+        isSignMinus = bcs
+      } else if product.high != 0 || product.low >= ac {
+        let borrow: Bool
+        (c_.low, borrow) = product.low.subtractingReportingOverflow(ac)
+        c_.high = product.high &- (borrow ? 1 : 0)
+        isSignMinus = c_ == (0, 0)
+          ? rule == .down // Exact zero. See IEEE 754 §6.3.
+          : bcs
+      } else {
+        c_ = (0, ac &- product.low)
+        isSignMinus = a._isSignMinus
+      }
+    } else {
+      fatalError("Not implemented")
+    }
+
+    return ._pack(
+      isSignMinus: isSignMinus,
+      biasedExponent: e_,
+      significand: c_,
+      sticky: sticky,
+      preferredBiasedExponent: pe,
+      rule,
+      &flags)
   }
 
   @inline(always)
