@@ -298,81 +298,82 @@ extension Decimal128: FloatingPoint {
     rounding rule: _DecimalFloatingPointRoundingRule,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
-    var a = self, b = lhs, c = rhs
+    var z = self, x = lhs, y = rhs
 
-    guard a.isFinite && b._isFiniteNonzero && c._isFiniteNonzero else {
-      if a.isSignalingNaN {
+    guard z.isFinite && x._isFiniteNonzero && y._isFiniteNonzero else {
+      if z.isSignalingNaN {
         _signal(.invalid, into: &flags)
-        a = a._quiet
+        z = z._quiet
       }
-      if b.isSignalingNaN {
+      if x.isSignalingNaN {
         _signal(.invalid, into: &flags)
-        b = b._quiet
+        x = x._quiet
       }
-      if c.isSignalingNaN {
+      if y.isSignalingNaN {
         _signal(.invalid, into: &flags)
-        c = c._quiet
+        y = y._quiet
       }
-      let invalid = (b.isZero && c.isInfinite) || (c.isZero && b.isInfinite)
+      let invalid = (x.isZero && y.isInfinite) || (y.isZero && x.isInfinite)
       if invalid {
         _signal(.invalid, into: &flags)
       }
-      if a.isNaN { return a._canonical }
-      if b.isNaN { return b._canonical }
-      if c.isNaN { return c._canonical }
+      if z.isNaN { return z._canonical }
+      if x.isNaN { return x._canonical }
+      if y.isNaN { return y._canonical }
       if invalid { return .nan }
 
-      if b.isInfinite || c.isInfinite {
-        let isSignMinus = b._isSignMinus != c._isSignMinus
-        if a.isInfinite && a._isSignMinus != isSignMinus {
+      if x.isInfinite || y.isInfinite {
+        let isSignMinus = x._isSignMinus != y._isSignMinus
+        if z.isInfinite && z._isSignMinus != isSignMinus {
           _signal(.invalid, into: &flags)
           return .nan
         }
         return isSignMinus ? -.infinity : .infinity
       }
-      if a.isInfinite {
-        return a._canonical
+      if z.isInfinite {
+        return z._canonical
       }
 
       // `b.isZero || c.isZero`.
-      var ae = Int(a.exponentBitPattern)
-      let pe =
-        min(ae, Int(b.exponentBitPattern) &- 6176 &+ Int(c.exponentBitPattern))
-      if a.isZero {
+      var ez = Int(z.exponentBitPattern)
+      let e_ =
+        min(ez, Int(x.exponentBitPattern) &- 6176 &+ Int(y.exponentBitPattern))
+      if z.isZero {
         let isSignMinus = rule == .down
-          ? a._isSignMinus || (b._isSignMinus != c._isSignMinus)
-          : a._isSignMinus && (b._isSignMinus != c._isSignMinus)
+          ? z._isSignMinus || (x._isSignMinus != y._isSignMinus)
+          : z._isSignMinus && (x._isSignMinus != y._isSignMinus)
         let abs = Self(
-          bitPattern: UInt128(truncatingIfNeeded: max(pe, 0)) &<< 113)
+          bitPattern: UInt128(truncatingIfNeeded: max(0, e_)) &<< 113)
         return isSignMinus ? -abs : abs
       }
-      var ac = a.significandBitPattern
+      var cz = z.significandBitPattern
       Self._select(
-        biasedExponent: &ae,
-        nonzeroSignificand: &ac,
-        boundedPreferredBiasedExponent: max(pe, 0))
-      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: ae) &<< 113 | ac)
-      return a._isSignMinus ? -abs : abs
+        biasedExponent: &ez,
+        nonzeroSignificand: &cz,
+        boundedPreferredBiasedExponent: max(e_, 0))
+      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: ez) &<< 113 | cz)
+      return z._isSignMinus ? -abs : abs
     }
 
-    let ae = Int(a.exponentBitPattern)
-    let bce = Int(b.exponentBitPattern) &- 6176 &+ Int(c.exponentBitPattern)
-    let ac = a.isZero ? 0 : a.significandBitPattern
-    if ac != 0 {
-      let n = ae &- bce
+    let ez = Int(z.exponentBitPattern)
+    let cz = z.isZero ? 0 : z.significandBitPattern
+    let exy = Int(x.exponentBitPattern) &- 6176 &+ Int(y.exponentBitPattern)
+    let cxy: (high: UInt128, low: UInt128)
+    let sxy = x._isSignMinus != y._isSignMinus
+    let sameSign = sxy == z._isSignMinus
+    if cz != 0 {
+      let n = ez &- exy
       if n >= 69 {
-        let logac = ac._commonLogarithm
-        // Without computing the product, we know it has at most 68 digits,
-        // and hence `log10(product)` is at most 67.
-        let underestimate = n &+ logac &- 67
-        if underestimate >= 35 {
+        let logcz = cz._commonLogarithm
+        // Without computing the product `cxy`, we know it has at most 68
+        // digits, and hence `log10(cxy)` is at most 67.
+        let minDelta = n &+ logcz &- 67
+        if minDelta >= 35 {
           // Inexact.
-          var e_ = max(0, ae &+ logac &- 33)
-          var c_ = unsafe ac &* ._exp10[unchecked: ae &- e_]
-          let bcs = b._isSignMinus != c._isSignMinus
-          let isTiny =
-            e_ == 0 && (c_ < ._1e33 || (c_ == ._1e33 && bcs != a._isSignMinus))
-          if bcs == a._isSignMinus {
+          var e = max(0, ez &+ logcz &- 33)
+          var c = unsafe cz &* ._exp10[unchecked: ez &- e]
+          let isTiny = e == 0 && (sameSign ? c < ._1e33 : c <= ._1e33)
+          if sameSign {
             let nextAway: Bool =
               switch rule {
               case .toNearestOrEven, .toNearestOrAwayFromZero:
@@ -382,34 +383,34 @@ extension Decimal128: FloatingPoint {
               case .awayFromZero:
                 true
               case .down:
-                bcs
+                sxy
               case .up:
-                !bcs
+                !sxy
               @unknown default:
                 fatalError("Unknown rounding rule.")
               }
             if nextAway {
-              if c_ == ._1e34 &- 1 {
-                if e_ == 12287 {
+              if c == ._1e34 &- 1 {
+                if e == 12287 {
                   _signal(.overflowInexact, into: &flags)
-                  return bcs ? -.infinity : .infinity
+                  return sxy ? -.infinity : .infinity
                 }
-                c_ = ._1e33
-                e_ &+= 1
+                c = ._1e33
+                e &+= 1
               } else {
-                c_ &+= 1
+                c &+= 1
               }
             }
           } else {
             let nextToward: Bool
             switch rule {
             case .toNearestOrEven, .toNearestOrAwayFromZero:
-              if underestimate == 35 && c_ == ._1e33 && e_ != 0 {
+              if minDelta == 35 && c == ._1e33 && e != 0 {
                 let _5e33: UInt128 = ._1e34 &>> 1
-                let bc = b.significandBitPattern
-                let cc = c.significandBitPattern
-                nextToward = bc > _5e33 && cc > _5e33 &&
-                  bc.multipliedFullWidth(by: cc) >
+                let cx = x.significandBitPattern
+                let cy = y.significandBitPattern
+                nextToward = cx > _5e33 && cy > _5e33 &&
+                  cx.multipliedFullWidth(by: cy) >
                     _5e33.multipliedFullWidth(by: ._1e34)
               } else {
                 nextToward = false
@@ -419,97 +420,178 @@ extension Decimal128: FloatingPoint {
             case .awayFromZero:
               nextToward = false
             case .down:
-              nextToward = bcs
+              nextToward = sxy
             case .up:
-              nextToward = !bcs
+              nextToward = !sxy
             @unknown default:
               fatalError("Unknown rounding rule.")
             }
             if nextToward {
-              if c_ == ._1e33 && e_ != 0 {
-                c_ = ._1e34 &- 1
-                e_ &-= 1
+              if c == ._1e33 && e != 0 {
+                c = ._1e34 &- 1
+                e &-= 1
               } else {
-                c_ &-= 1
+                c &-= 1
               }
             }
           }
-          let abs =
-            Self(bitPattern: UInt128(truncatingIfNeeded: e_) &<< 113 | c_)
+          let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | c)
           if isTiny {
             _signal(.underflowInexact, into: &flags)
           } else {
             _signal(.inexact, into: &flags)
           }
-          return a._isSignMinus ? -abs : abs
+          return z._isSignMinus ? -abs : abs
         }
       }
     }
 
-    let bc = b.significandBitPattern
-    let cc = c.significandBitPattern
-    let product: (high: UInt128, low: UInt128)
-    if bc <= 0xFFFF_FFFF_FFFF_FFFF && cc <= 0xFFFF_FFFF_FFFF_FFFF {
+    let cx = x.significandBitPattern
+    let cy = y.significandBitPattern
+    if cx <= 0xFFFF_FFFF_FFFF_FFFF && cy <= 0xFFFF_FFFF_FFFF_FFFF {
       let (hi, lo) =
-        UInt64(truncatingIfNeeded: bc).multipliedFullWidth(
-          by: UInt64(truncatingIfNeeded: cc))
-      product = (0, UInt128(hi) &<< 64 | UInt128(lo))
+        UInt64(truncatingIfNeeded: cx).multipliedFullWidth(
+          by: UInt64(truncatingIfNeeded: cy))
+      cxy = (0, UInt128(hi) &<< 64 | UInt128(lo))
     } else {
-      product = bc.multipliedFullWidth(by: cc)
+      cxy = cx.multipliedFullWidth(by: cy)
     }
-    if product.high == 0 && product.low < ._1e34 && bce >= 0 && bce <= 12287 {
-      let isSignMinus = b._isSignMinus != c._isSignMinus
+    if cxy.high == 0 && cxy.low < ._1e34 && exy >= 0 && exy <= 12287 {
+      let isSignMinus = x._isSignMinus != y._isSignMinus
       let abs = Self(
-        bitPattern: UInt128(truncatingIfNeeded: bce) &<< 113 | product.low)
-      return a._adding(isSignMinus ? -abs : abs, rounding: rule, &flags)
+        bitPattern: UInt128(truncatingIfNeeded: exy) &<< 113 | cxy.low)
+      return z._adding(isSignMinus ? -abs : abs, rounding: rule, &flags)
     }
 
-    let pe = min(ae, bce)
-    if ac == 0 {
+    let pe = min(exy, ez)
+    if cz == 0 {
       return ._pack(
-        isSignMinus: b._isSignMinus != c._isSignMinus,
-        biasedExponent: bce,
-        significand: product,
+        isSignMinus: x._isSignMinus != y._isSignMinus,
+        biasedExponent: exy,
+        significand: cxy,
         preferredBiasedExponent: pe,
         rule,
         &flags)
     }
 
-    let bcs = b._isSignMinus != c._isSignMinus
     var isSignMinus: Bool
-    var c_: (high: UInt128, low: UInt128)
-    var e_: Int
+    var e: Int
+    var c: (high: UInt128, low: UInt128)
     var sticky = false
-    if ae == bce {
-      e_ = pe
-      if bcs == a._isSignMinus {
+    if ez == exy {
+      e = pe
+      if sameSign {
         let carry: Bool
-        (c_.low, carry) = product.low.addingReportingOverflow(ac)
-        c_.high = product.high &+ (carry ? 1 : 0)
-        isSignMinus = bcs
-      } else if product.high != 0 || product.low >= ac {
+        (c.low, carry) = cxy.low.addingReportingOverflow(cz)
+        c.high = cxy.high &+ (carry ? 1 : 0)
+        isSignMinus = sxy
+      } else if cxy.high != 0 || cxy.low >= cz {
         let borrow: Bool
-        (c_.low, borrow) = product.low.subtractingReportingOverflow(ac)
-        c_.high = product.high &- (borrow ? 1 : 0)
-        isSignMinus = c_ == (0, 0)
+        (c.low, borrow) = cxy.low.subtractingReportingOverflow(cz)
+        c.high = cxy.high &- (borrow ? 1 : 0)
+        isSignMinus = c == (0, 0)
           ? rule == .down // Exact zero. See IEEE 754 §6.3.
-          : bcs
+          : sxy
       } else {
-        c_ = (0, ac &- product.low)
-        isSignMinus = a._isSignMinus
+        c = (0, cz &- cxy.low)
+        isSignMinus = z._isSignMinus
       }
-    } else {
-      fatalError("Not implemented")
+      return ._pack(
+        isSignMinus: isSignMinus,
+        biasedExponent: e,
+        significand: c,
+        sticky: sticky,
+        preferredBiasedExponent: pe,
+        rule,
+        &flags)
     }
 
-    return ._pack(
-      isSignMinus: isSignMinus,
-      biasedExponent: e_,
-      significand: c_,
-      sticky: sticky,
-      preferredBiasedExponent: pe,
-      rule,
-      &flags)
+    let logcz = cz._commonLogarithm
+    var n: Int
+    var divisor: UInt128 = 0
+    if cxy.high == 0 {
+      n = cxy.low._commonLogarithm &- 33
+      if n > 0 {
+        divisor = unsafe ._exp10[unchecked: n]
+      }
+    } else {
+      // See explanatory comment in `UInt128._commonLogarithm`.
+      // Note that here we underestimate.
+      n = ((77 &* (255 &- cxy.high.leadingZeroBitCount)) &>> 8) &- 33
+      divisor = unsafe UInt128._exp10[unchecked: n]
+      if cxy >= divisor.multipliedFullWidth(by: ._1e34) {
+        n &+= 1
+        divisor &*= 10
+      }
+    }
+    if n > 0 && ez &+ logcz < exy {
+      // Inexact.
+      var (quo, rem) = cxy.high == 0
+        ? cxy.low._quotientAndRemainder(dividingBy1e: n)
+        : UInt128._quotientAndRemainder(fullWidth: cxy, dividingBy1e: n)
+      e = exy &+ n
+      if rem != 0 || sameSign {
+        let nextAway: Bool =
+          switch rule {
+          case .toNearestOrEven, .toNearestOrAwayFromZero:
+            sameSign ? rem >= (divisor &>> 1) : rem > (divisor &>> 1)
+          case .towardZero:
+            false
+          case .awayFromZero:
+            true
+          case .down:
+            sxy
+          case .up:
+            !sxy
+          @unknown default:
+            fatalError("Unknown rounding rule.")
+          }
+        if nextAway {
+          if quo == ._1e34 &- 1 {
+            quo = ._1e33
+            e &+= 1
+          } else {
+            quo &+= 1
+          }
+        }
+      } else {
+        let nextToward: Bool =
+          switch rule {
+          case .toNearestOrEven, .toNearestOrAwayFromZero:
+            if quo == ._1e33 && n == 1 && ez &+ logcz == exy &- 1 {
+              unsafe cz > ._exp10[unchecked: logcz &+ 1] &>> 1
+            } else {
+              false
+            }
+          case .towardZero:
+            true
+          case .awayFromZero:
+            false
+          case .down:
+            !sxy
+          case .up:
+            sxy
+          @unknown default:
+            fatalError("Unknown rounding rule.")
+          }
+        if nextToward {
+          if quo == ._1e33 {
+            quo = ._1e34 &- 1
+            e &-= 1
+          } else {
+            quo &-= 1
+          }
+        }
+      }
+      guard e <= 12287 else {
+        return ._overflow(isSignMinus: sxy, rule, &flags)
+      }
+      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | quo)
+      _signal(.inexact, into: &flags)
+      return sxy ? -abs : abs
+    }
+
+    fatalError("Not implemented")
   }
 
   @inline(always)
