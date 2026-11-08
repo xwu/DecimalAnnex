@@ -395,12 +395,27 @@ extension Decimal128: AdditiveArithmetic {
       if isSignMinus == rhs._isSignMinus {
         c1 &+= c2
         if c1 >= ._1e34 {
-          return ._pack(
-            isSignMinus: isSignMinus,
-            biasedExponent: Int(e1),
-            significand: (0, c1), // TODO: Consider not using the general rounder.
-            rule,
-            &flags)
+          guard e1 < 12287 else {
+            return ._overflow(isSignMinus: isSignMinus, rule, &flags)
+          }
+          let r: UInt128
+          (c1, r) = c1.quotientAndRemainder(dividingBy: 10)
+          e1 &+= 1
+          if r != 0 {
+            if Self._roundsAway(
+              isSignMinus: isSignMinus,
+              significand: c1,
+              digit: UInt8(r),
+              sticky: false,
+              rule
+            ) {
+              c1 &+= 1
+            }
+            _signal(.inexact, into: &flags)
+          }
+          let abs =
+            Self(bitPattern: UInt128(truncatingIfNeeded: e1) &<< 113 | c1)
+          return isSignMinus ? -abs : abs
         }
       } else {
         let borrow: Bool
@@ -506,19 +521,12 @@ extension Decimal128: AdditiveArithmetic {
     let delta = n &+ (logc1 &- logc2)
     if delta > 34 {
       // Inexact.
-      var isTiny = false
       if logc1 < 33 {
         let n_ = UInt(33 &- logc1)
-        if e1 < n_ {
-          // Note that the result isn't tiny if `e1 == n_`.
-          isTiny = true
-          c1 &*= unsafe ._exp10[unchecked: Int(e1)]
-          e1 = 0
-        } else {
-          c1 &*= unsafe ._exp10[unchecked: Int(n_)]
-          e1 &-= n_
-        }
+        c1 &*= unsafe ._exp10[unchecked: Int(n_)]
+        e1 &-= n_
       }
+      assert(e1 >= 2) // Never tiny.
       if isSignMinus == rhs._isSignMinus {
         let nextAway: Bool =
           switch rule {
@@ -566,24 +574,15 @@ extension Decimal128: AdditiveArithmetic {
           }
         if nextToward {
           if c1 == ._1e33 {
-            if e1 == 0 {
-              isTiny = true
-              c1 &-= 1
-            } else {
-              c1 = ._1e34 &- 1
-              e1 &-= 1
-            }
+            c1 = ._1e34 &- 1
+            e1 &-= 1
           } else {
             c1 &-= 1
           }
         }
       }
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e1) &<< 113 | c1)
-      if isTiny {
-        _signal(.underflowInexact, into: &flags)
-      } else {
-        _signal(.inexact, into: &flags)
-      }
+      _signal(.inexact, into: &flags)
       return isSignMinus ? -abs : abs
     }
 
@@ -614,6 +613,11 @@ extension Decimal128: AdditiveArithmetic {
       }
     }
 
+    if hi == 0 && lo < ._1e34 {
+      // Exact.
+      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e2) &<< 113 | lo)
+      return isSignMinus ? -abs : abs
+    }
     return ._pack(
       isSignMinus: isSignMinus,
       biasedExponent: Int(e2),
