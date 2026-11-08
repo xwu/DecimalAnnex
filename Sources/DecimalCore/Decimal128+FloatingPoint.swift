@@ -209,6 +209,34 @@ extension Decimal128: FloatingPoint {
       &flags)
   }
 
+  /// Creates a new value from the given sign, exponent, and significand,
+  /// rounding to the nearest representable value (ties to even) if needed
+  /// and accumulating status flags.
+  ///
+  /// This initializer is equivalent to the following calculation, where `**`
+  /// is exponentiation, computed as if by a single, correctly rounded,
+  /// floating-point operation:
+  ///
+  ///     (sign == .minus ? -1 : 1) * significand * 10 ** exponent
+  ///
+  /// As with any basic operation, if this value is outside the representable
+  /// range of the type, overflow or underflow occurs, and zero, a subnormal
+  /// value, or infinity may result. In addition, there are two other edge
+  /// cases:
+  ///
+  /// - If the value you pass to `significand` is zero or infinite, the result
+  ///   is zero or infinite, regardless of the value of `exponent`.
+  /// - If the value you pass to `significand` is NaN, the result is NaN.
+  ///
+  /// This initializer implements the `scaleB` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - sign: The sign to apply to `significand`.
+  ///   - exponent: The power of ten by which to scale `significand`.
+  ///   - significand: The significand to scale.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public init(
     sign: FloatingPointSign,
@@ -224,6 +252,32 @@ extension Decimal128: FloatingPoint {
       &flags)
   }
 
+  /// Creates a new value from the given sign, exponent, and significand,
+  /// rounding to a representable value using the given rounding rule if needed.
+  ///
+  /// This initializer is equivalent to the following calculation, where `**`
+  /// is exponentiation, computed as if by a single, correctly rounded,
+  /// floating-point operation:
+  ///
+  ///     (sign == .minus ? -1 : 1) * significand * 10 ** exponent
+  ///
+  /// As with any basic operation, if this value is outside the representable
+  /// range of the type, overflow or underflow occurs, and zero, a subnormal
+  /// value, or infinity may result. In addition, there are two other edge
+  /// cases:
+  ///
+  /// - If the value you pass to `significand` is zero or infinite, the result
+  ///   is zero or infinite, regardless of the value of `exponent`.
+  /// - If the value you pass to `significand` is NaN, the result is NaN.
+  ///
+  /// This initializer implements the `scaleB` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - sign: The sign to apply to `significand`.
+  ///   - exponent: The power of ten by which to scale `significand`.
+  ///   - significand: The significand to scale.
+  ///   - rule: The rounding rule to use for an inexact result.
   @inline(always)
   public init(
     sign: FloatingPointSign,
@@ -240,6 +294,35 @@ extension Decimal128: FloatingPoint {
       &flags)
   }
 
+  /// Creates a new value from the given sign, exponent, and significand,
+  /// rounding to a representable value using the given rounding rule if needed
+  /// and accumulating status flags.
+  ///
+  /// This initializer is equivalent to the following calculation, where `**`
+  /// is exponentiation, computed as if by a single, correctly rounded,
+  /// floating-point operation:
+  ///
+  ///     (sign == .minus ? -1 : 1) * significand * 10 ** exponent
+  ///
+  /// As with any basic operation, if this value is outside the representable
+  /// range of the type, overflow or underflow occurs, and zero, a subnormal
+  /// value, or infinity may result. In addition, there are two other edge
+  /// cases:
+  ///
+  /// - If the value you pass to `significand` is zero or infinite, the result
+  ///   is zero or infinite, regardless of the value of `exponent`.
+  /// - If the value you pass to `significand` is NaN, the result is NaN.
+  ///
+  /// This initializer implements the `scaleB` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - sign: The sign to apply to `significand`.
+  ///   - exponent: The power of ten by which to scale `significand`.
+  ///   - significand: The significand to scale.
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public init(
     sign: FloatingPointSign,
@@ -798,6 +881,17 @@ extension Decimal128: FloatingPoint {
       &flags)
   }
 
+  /// Returns the result of adding the product of the two given values to this
+  /// value, computed without intermediate rounding, finally rounding to the
+  /// nearest representable value (ties to even) if needed.
+  ///
+  /// This method implements the `fusedMultiplyAdd` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - lhs: One of the values to multiply before adding to this value.
+  ///   - rhs: The other value to multiply.
+  /// - Returns: The product of `lhs` and `rhs`, added to this value.
   @inline(always)
   public func addingProduct(
     _ lhs: Decimal128, _ rhs: Decimal128
@@ -806,6 +900,20 @@ extension Decimal128: FloatingPoint {
     return _addingProduct(lhs, rhs, rounding: .toNearestOrEven, &flags)
   }
 
+  /// Returns the result of adding the product of the two given values to this
+  /// value, computed without intermediate rounding, finally rounding to the
+  /// nearest representable value (ties to even) if needed and accumulating
+  /// status flags.
+  ///
+  /// This method implements the `fusedMultiplyAdd` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - lhs: One of the values to multiply before adding to this value.
+  ///   - rhs: The other value to multiply.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: The product of `lhs` and `rhs`, added to this value.
   @inline(always)
   public func addingProduct(
     _ lhs: Decimal128, _ rhs: Decimal128,
@@ -814,6 +922,18 @@ extension Decimal128: FloatingPoint {
     _addingProduct(lhs, rhs, rounding: .toNearestOrEven, &flags)
   }
 
+  /// Returns the result of adding the product of the two given values to this
+  /// value, computed without intermediate rounding, finally rounding to a
+  /// representable value using the given rounding rule if needed.
+  ///
+  /// This method implements the `fusedMultiplyAdd` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - lhs: One of the values to multiply before adding to this value.
+  ///   - rhs: The other value to multiply.
+  ///   - rule: The rounding rule to use for an inexact result.
+  /// - Returns: The product of `lhs` and `rhs`, added to this value.
   @inline(always)
   public func addingProduct(
     _ lhs: Decimal128, _ rhs: Decimal128,
@@ -823,6 +943,21 @@ extension Decimal128: FloatingPoint {
     return _addingProduct(lhs, rhs, rounding: .init(rule), &flags)
   }
 
+  /// Returns the result of adding the product of the two given values to this
+  /// value, computed without intermediate rounding, finally rounding to a
+  /// representable value using the given rounding rule if needed and
+  /// accumulating status flags.
+  ///
+  /// This method implements the `fusedMultiplyAdd` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - lhs: One of the values to multiply before adding to this value.
+  ///   - rhs: The other value to multiply.
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: The product of `lhs` and `rhs`, added to this value.
   @inline(always)
   public func addingProduct(
     _ lhs: Decimal128, _ rhs: Decimal128,
@@ -832,11 +967,28 @@ extension Decimal128: FloatingPoint {
     _addingProduct(lhs, rhs, rounding: .init(rule), &flags)
   }
 
+  /// Adds the product of the two given values to this value in place, computed
+  /// without intermediate rounding, finally rounding to the nearest
+  /// representable value (ties to even) if needed.
+  ///
+  /// - Parameters:
+  ///   - lhs: One of the values to multiply before adding to this value.
+  ///   - rhs: The other value to multiply.
   @inline(always)
   public mutating func addProduct(_ lhs: Decimal128, _ rhs: Decimal128) {
     self = addingProduct(lhs, rhs)
   }
 
+  /// Adds the product of the two given values to this value in place, computed
+  /// without intermediate rounding, finally rounding to the nearest
+  /// representable value (ties to even) if needed and accumulating status
+  /// flags.
+  ///
+  /// - Parameters:
+  ///   - lhs: One of the values to multiply before adding to this value.
+  ///   - rhs: The other value to multiply.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func addProduct(
     _ lhs: Decimal128, _ rhs: Decimal128,
@@ -845,6 +997,14 @@ extension Decimal128: FloatingPoint {
     self = addingProduct(lhs, rhs, &flags)
   }
 
+  /// Adds the product of the two given values to this value in place, computed
+  /// without intermediate rounding, finally rounding to a representable value
+  /// using the given rounding rule if needed.
+  ///
+  /// - Parameters:
+  ///   - lhs: One of the values to multiply before adding to this value.
+  ///   - rhs: The other value to multiply.
+  ///   - rule: The rounding rule to use for an inexact result.
   @inline(always)
   public mutating func addProduct(
     _ lhs: Decimal128, _ rhs: Decimal128,
@@ -853,6 +1013,16 @@ extension Decimal128: FloatingPoint {
     self = addingProduct(lhs, rhs, rounding: rule)
   }
 
+  /// Adds the product of the two given values to this value in place, computed
+  /// without intermediate rounding, finally rounding to a representable value
+  /// using the given rounding rule if needed and accumulating status flags.
+  ///
+  /// - Parameters:
+  ///   - lhs: One of the values to multiply before adding to this value.
+  ///   - rhs: The other value to multiply.
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func addProduct(
     _ lhs: Decimal128, _ rhs: Decimal128,
@@ -1161,12 +1331,34 @@ extension Decimal128: FloatingPoint {
     return isSignMinus ? -abs : abs
   }
 
+  /// Returns the quotient of dividing the first value by the second,
+  /// rounding to the nearest representable value (ties to even) if needed.
+  ///
+  /// This method implements the `division` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - lhs: The value to divide.
+  ///   - rhs: The value by which to divide `lhs`.
+  /// - Returns: The quotient of `lhs` and `rhs`, rounded if needed.
   @inline(always)
   public static func / (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
     return lhs._divided(by: rhs, rounding: .toNearestOrEven, &flags)
   }
 
+  /// Returns the result of dividing this value by the given value,
+  /// rounding to the nearest representable value (ties to even) if needed
+  /// and accumulating status flags.
+  ///
+  /// This method implements the `division` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value by which to divide this value.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: The quotient of this value and `rhs`, rounded if needed.
   @inline(always)
   public func divided(
     by rhs: Decimal128,
@@ -1175,6 +1367,16 @@ extension Decimal128: FloatingPoint {
     _divided(by: rhs, rounding: .toNearestOrEven, &flags)
   }
 
+  /// Returns the result of dividing this value by the given value,
+  /// rounding to a representable value using the given rounding rule if needed.
+  ///
+  /// This method implements the `division` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value by which to divide this value.
+  ///   - rule: The rounding rule to use for an inexact result.
+  /// - Returns: The quotient of this value and `rhs`, rounded if needed.
   @inline(always)
   public func divided(
     by rhs: Decimal128,
@@ -1184,6 +1386,19 @@ extension Decimal128: FloatingPoint {
     return _divided(by: rhs, rounding: .init(rule), &flags)
   }
 
+  /// Returns the result of dividing this value by the given value,
+  /// rounding to a representable value using the given rounding rule if needed
+  /// and accumulating status flags.
+  ///
+  /// This method implements the `division` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value by which to divide this value.
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: The quotient of this value and `rhs`, rounded if needed.
   @inline(always)
   public func divided(
     by rhs: Decimal128,
@@ -1193,11 +1408,26 @@ extension Decimal128: FloatingPoint {
     _divided(by: rhs, rounding: .init(rule), &flags)
   }
 
+  /// Divides the first value by the second and stores the quotient in the
+  /// left-hand-side variable, rounding to the nearest representable value
+  /// (ties to even) if needed.
+  ///
+  /// - Parameters:
+  ///   - lhs: The value to divide.
+  ///   - rhs: The value by which to divide `lhs`.
   @inline(always)
   public static func /= (lhs: inout Decimal128, rhs: Decimal128) {
     lhs = lhs / rhs
   }
 
+  /// Divides this value by the given value in place,
+  /// rounding to the nearest representable value (ties to even) if needed
+  /// and accumulating status flags.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value by which to divide this value.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func divide(
     by rhs: Decimal128,
@@ -1206,6 +1436,12 @@ extension Decimal128: FloatingPoint {
     self = divided(by: rhs, &flags)
   }
 
+  /// Divides this value by the given value in place,
+  /// rounding to a representable value using the given rounding rule if needed.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value by which to divide this value.
+  ///   - rule: The rounding rule to use for an inexact result.
   @inline(always)
   public mutating func divide(
     by rhs: Decimal128,
@@ -1214,6 +1450,15 @@ extension Decimal128: FloatingPoint {
     self = divided(by: rhs, rounding: rule)
   }
 
+  /// Divides this value by the given value in place,
+  /// rounding to a representable value using the given rounding rule if needed
+  /// and accumulating status flags.
+  ///
+  /// - Parameters:
+  ///   - rhs: The value by which to divide this value.
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func divide(
     by rhs: Decimal128,

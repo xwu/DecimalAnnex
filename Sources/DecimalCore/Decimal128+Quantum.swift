@@ -119,12 +119,47 @@ extension Decimal128 {
     return Self(sign: sign, exponentBitPattern: oe, significandBitPattern: c)
   }
 
+  /// Returns this value with the same quantum as the given value,
+  /// rounding to the nearest representable value (ties to even) if needed.
+  ///
+  /// For finite operands, the result has the same represented exponent as
+  /// `other` and the same sign as this value. If the requested exponent would
+  /// require a significand with more than 34 decimal digits, the result is NaN.
+  ///
+  /// If both operands are infinite, the result is infinity with the sign of
+  /// this value. If exactly one operand is infinite, the result is NaN.
+  ///
+  /// This method implements the `quantize` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - other: The value whose quantum to use for the result.
+  /// - Returns: This value with the quantum of `other`, rounded if needed.
   @inline(always)
   public func quantized(by other: Decimal128) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
     return _quantized(by: other, rounding: .toNearestOrEven, &flags)
   }
 
+  /// Returns this value with the same quantum as the given value,
+  /// rounding to the nearest representable value (ties to even) if needed
+  /// and accumulating status flags.
+  ///
+  /// For finite operands, the result has the same represented exponent as
+  /// `other` and the same sign as this value. If the requested exponent would
+  /// require a significand with more than 34 decimal digits, the result is NaN.
+  ///
+  /// If both operands are infinite, the result is infinity with the sign of
+  /// this value. If exactly one operand is infinite, the result is NaN.
+  ///
+  /// This method implements the `quantize` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - other: The value whose quantum to use for the result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: This value with the quantum of `other`, rounded if needed.
   @inline(always)
   public func quantized(
     by other: Decimal128,
@@ -133,6 +168,23 @@ extension Decimal128 {
     _quantized(by: other, rounding: .toNearestOrEven, &flags)
   }
 
+  /// Returns this value with the same quantum as the given value,
+  /// rounding using the given rounding rule if needed.
+  ///
+  /// For finite operands, the result has the same represented exponent as
+  /// `other` and the same sign as this value. If the requested exponent would
+  /// require a significand with more than 34 decimal digits, the result is NaN.
+  ///
+  /// If both operands are infinite, the result is infinity with the sign of
+  /// this value. If exactly one operand is infinite, the result is NaN.
+  ///
+  /// This method implements the `quantize` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - other: The value whose quantum to use for the result.
+  ///   - rule: The rounding rule to use for an inexact result.
+  /// - Returns: This value with the quantum of `other`, rounded if needed.
   @inline(always)
   public func quantized(
     by other: Decimal128,
@@ -142,6 +194,26 @@ extension Decimal128 {
     return _quantized(by: other, rounding: .init(rule), &flags)
   }
 
+  /// Returns this value with the same quantum as the given value,
+  /// rounding using the given rounding rule if needed and accumulating
+  /// status flags.
+  ///
+  /// For finite operands, the result has the same represented exponent as
+  /// `other` and the same sign as this value. If the requested exponent would
+  /// require a significand with more than 34 decimal digits, the result is NaN.
+  ///
+  /// If both operands are infinite, the result is infinity with the sign of
+  /// this value. If exactly one operand is infinite, the result is NaN.
+  ///
+  /// This method implements the `quantize` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - other: The value whose quantum to use for the result.
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: This value with the quantum of `other`, rounded if needed.
   @inline(always)
   public func quantized(
     by other: Decimal128,
@@ -151,11 +223,38 @@ extension Decimal128 {
     _quantized(by: other, rounding: .init(rule), &flags)
   }
 
+  /// Changes this value to have the same quantum as the given value,
+  /// rounding to the nearest representable value (ties to even) if needed.
+  ///
+  /// For finite operands, the result has the same represented exponent as
+  /// `other` and the same sign as this value. If the requested exponent would
+  /// require a significand with more than 34 decimal digits, the result is NaN.
+  ///
+  /// If both operands are infinite, the result is infinity with the sign of
+  /// this value. If exactly one operand is infinite, the result is NaN.
+  ///
+  /// - Parameters:
+  ///   - other: The value whose quantum to use for the result.
   @inline(always)
   public mutating func quantize(by other: Decimal128) {
     self = quantized(by: other)
   }
 
+  /// Changes this value to have the same quantum as the given value,
+  /// rounding to the nearest representable value (ties to even) if needed
+  /// and accumulating status flags.
+  ///
+  /// For finite operands, the result has the same represented exponent as
+  /// `other` and the same sign as this value. If the requested exponent would
+  /// require a significand with more than 34 decimal digits, the result is NaN.
+  ///
+  /// If both operands are infinite, the result is infinity with the sign of
+  /// this value. If exactly one operand is infinite, the result is NaN.
+  ///
+  /// - Parameters:
+  ///   - other: The value whose quantum to use for the result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func quantize(
     by other: Decimal128,
@@ -164,6 +263,19 @@ extension Decimal128 {
     self = quantized(by: other, &flags)
   }
 
+  /// Changes this value to have the same quantum as the given value,
+  /// rounding using the given rounding rule if needed.
+  ///
+  /// For finite operands, the result has the same represented exponent as
+  /// `other` and the same sign as this value. If the requested exponent would
+  /// require a significand with more than 34 decimal digits, the result is NaN.
+  ///
+  /// If both operands are infinite, the result is infinity with the sign of
+  /// this value. If exactly one operand is infinite, the result is NaN.
+  ///
+  /// - Parameters:
+  ///   - other: The value whose quantum to use for the result.
+  ///   - rule: The rounding rule to use for an inexact result.
   @inline(always)
   public mutating func quantize(
     by other: Decimal128,
@@ -172,6 +284,22 @@ extension Decimal128 {
     self = quantized(by: other, rounding: rule)
   }
 
+  /// Changes this value to have the same quantum as the given value,
+  /// rounding using the given rounding rule if needed and accumulating status
+  /// flags.
+  ///
+  /// For finite operands, the result has the same represented exponent as
+  /// `other` and the same sign as this value. If the requested exponent would
+  /// require a significand with more than 34 decimal digits, the result is NaN.
+  ///
+  /// If both operands are infinite, the result is infinity with the sign of
+  /// this value. If exactly one operand is infinite, the result is NaN.
+  ///
+  /// - Parameters:
+  ///   - other: The value whose quantum to use for the result.
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func quantize(
     by other: Decimal128,
