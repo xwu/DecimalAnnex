@@ -292,7 +292,7 @@ extension Decimal128: FloatingPoint {
     return lhs.significandBitPattern <= rhs.significandBitPattern
   }
 
-  @usableFromInline
+  @inlinable
   internal func _addingProduct(
     _ lhs: Decimal128, _ rhs: Decimal128,
     rounding rule: _DecimalFloatingPointRoundingRule,
@@ -591,7 +591,211 @@ extension Decimal128: FloatingPoint {
       return sxy ? -abs : abs
     }
 
-    fatalError("Not implemented")
+    let delta = ez &+ logcz &- (exy &+ n &+ 33)
+    if (sameSign ? delta >= 0 : delta >= 2) && ez &+ logcz >= 34 {
+      let n_ = n &+ delta
+      if n_ >= 1 && n_ <= 38 {
+        // Shrink.
+        let cz_ = unsafe cz &* ._exp10[unchecked: 33 &- logcz]
+        divisor = unsafe ._exp10[unchecked: n_]
+        var (q, r) =
+        if cxy.high == 0 {
+          cxy.low < divisor
+          ? (0, cxy.low)
+          : cxy.low._quotientAndRemainder(dividingBy1e: n_)
+        } else {
+          UInt128._quotientAndRemainder(
+            fullWidth: (cxy.high, cxy.low), dividingBy1e: n_)
+        }
+        if sameSign {
+          q &+= cz_
+        } else {
+          assert(cz_ > q)
+          q = cz_ &- q
+          if r != 0 {
+            q &-= 1
+            r = divisor &- r
+          }
+        }
+
+        isSignMinus = z._isSignMinus
+        e = ez &+ logcz &- 33
+        if q >= ._1e34 {
+          sticky = r != 0
+          (q, r) = q.quotientAndRemainder(dividingBy: 10)
+          divisor = 10
+          e &+= 1
+        } else {
+          sticky = false
+          // Recover one digit, if necessary.
+          if q < ._1e33 {
+            let digit: UInt128
+            (digit, r) = r._quotientAndRemainder(dividingBy1e: n_ &- 1)
+            q = q &* 10 &+ digit
+            divisor = unsafe ._exp10[unchecked: n_ &- 1]
+            e &-= 1
+          }
+        }
+        assert(q >= ._1e33 && q < ._1e34)
+        guard e <= 12287 else {
+          return ._overflow(isSignMinus: isSignMinus, rule, &flags)
+        }
+        if r != 0 || sticky {
+          let half = divisor &>> 1
+          let nextAway: Bool =
+            switch rule {
+            case .toNearestOrEven:
+              r > half || (r == half && (sticky || (q & 1) != 0))
+            case .toNearestOrAwayFromZero:
+              r >= half
+            case .towardZero:
+              false
+            case .awayFromZero:
+              true
+            case .down:
+              isSignMinus
+            case .up:
+              !isSignMinus
+            @unknown default:
+              fatalError("Unknown rounding rule.")
+            }
+          if nextAway {
+            if q == ._1e34 &- 1 {
+              if e == 12287 {
+                _signal(.overflowInexact, into: &flags)
+                return isSignMinus ? -.infinity : .infinity
+              }
+              q = ._1e33
+              e &+= 1
+            } else {
+              q &+= 1
+            }
+          }
+          _signal(.inexact, into: &flags)
+        }
+        let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | q)
+        return isSignMinus ? -abs : abs
+      }
+    }
+
+    if !sameSign && delta >= -1 && delta <= 1 {
+      // Deep cancellation.
+      e = pe
+      let cz_: (high: UInt128, low: UInt128)
+      let cxy_: (high: UInt128, low: UInt128)
+      let n_ = ez &- exy
+      if n_ > 0 {
+        cxy_ = cxy
+        if n_ <= 38 {
+          cz_ = cz._multipliedFullWidth(by1e: n_)
+        } else {
+          let p = unsafe cz &* ._exp10[unchecked: n_ &- 34]
+          cz_ = p.multipliedFullWidth(by: ._1e34)
+        }
+      } else {
+        cz_ = (0, cz)
+        assert(cxy.high == 0)
+        cxy_ = cxy.low._multipliedFullWidth(by1e: -n_)
+      }
+      if cxy_ >= cz_ {
+        let borrow: Bool
+        (c.low, borrow) = cxy_.low.subtractingReportingOverflow(cz_.low)
+        c.high = cxy_.high &- (cz_.high &+ (borrow ? 1 : 0))
+        isSignMinus = c == (0, 0)
+          ? rule == .down // Exact zero. See IEEE 754 §6.3.
+          : sxy
+      } else {
+        let borrow: Bool
+        (c.low, borrow) = cz_.low.subtractingReportingOverflow(cxy_.low)
+        c.high = cz_.high &- (cxy_.high &+ (borrow ? 1 : 0))
+        isSignMinus = z._isSignMinus
+      }
+    } else if delta >= 0 {
+      // Addend `z` is dominant.
+      isSignMinus = z._isSignMinus
+      // Keep 36 digits.
+      e = ez &+ logcz &- 35
+      let cz_ = unsafe cz &* ._exp10[unchecked: 35 &- logcz]
+      let cxy_: UInt128
+      let n_ = e &- exy
+      if n_ <= 0 {
+        assert(cxy.high == 0)
+        cxy_ = unsafe cxy.low &* ._exp10[unchecked: -n_]
+      } else if n_ > n &+ 33 {
+        cxy_ = 0
+        sticky = true
+      } else if n_ <= 38 {
+        let r: UInt128
+        (cxy_, r) = cxy.high == 0
+          ? cxy.low._quotientAndRemainder(dividingBy1e: n_)
+          : UInt128._quotientAndRemainder(fullWidth: cxy, dividingBy1e: n_)
+        sticky = r != 0
+      } else {
+        let (q1, r1) =
+          UInt128._quotientAndRemainder(fullWidth: cxy, dividingBy1e: 38)
+        let r2: UInt128
+        (cxy_, r2) = q1._quotientAndRemainder(dividingBy1e: n_ &- 38)
+        sticky = r1 != 0 || r2 != 0
+      }
+      if sameSign {
+        c = (0, cz_ &+ cxy_)
+      } else {
+        c = (0, cz_ &- cxy_)
+        if sticky {
+          c.low &-= 1
+        }
+      }
+    } else {
+      // Product is dominant.
+      isSignMinus = sxy
+      // Again, keep 36 digits.
+      e = exy
+      if n >= 2 {
+        c = cxy
+      } else {
+        e &-= 2 &- n
+        c = (0, unsafe cxy.low &* ._exp10[unchecked: 2 &- n])
+      }
+      let cz_: (high: UInt128, low: UInt128)
+      let n_ = ez &- e
+      if n_ >= 0 {
+        if n_ <= 38 {
+          cz_ = cz._multipliedFullWidth(by1e: n_)
+        } else {
+          let p = unsafe cz &* ._exp10[unchecked: n_ &- 34]
+          cz_ = p.multipliedFullWidth(by: ._1e34)
+        }
+      } else if -n_ > logcz {
+        cz_ = (0, 0)
+        sticky = true
+      } else {
+        let (q, r) = cz._quotientAndRemainder(dividingBy1e: -n_)
+        cz_ = (0, q)
+        sticky = r != 0
+      }
+      if sameSign {
+        let carry: Bool
+        (c.low, carry) = c.low.addingReportingOverflow(cz_.low)
+        c.high &+= cz_.high &+ (carry ? 1 : 0)
+      } else {
+        let borrow1: Bool
+        (c.low, borrow1) = c.low.subtractingReportingOverflow(cz_.low)
+        c.high &-= cz_.high &+ (borrow1 ? 1 : 0)
+        if sticky {
+          let borrow2: Bool
+          (c.low, borrow2) = c.low.subtractingReportingOverflow(1)
+          if borrow2 { c.high &-= 1 }
+        }
+      }
+    }
+    return ._pack(
+      isSignMinus: isSignMinus,
+      biasedExponent: e,
+      significand: c,
+      sticky: sticky,
+      preferredBiasedExponent: pe,
+      rule,
+      &flags)
   }
 
   @inline(always)

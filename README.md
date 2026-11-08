@@ -19,7 +19,7 @@ It conforms to the standard library `FloatingPoint` protocol, making it usable i
 The implementation is written in native Swift and has no dependency on Foundation.
 
 > [!NOTE]
-> This project is at an early stage of development. Fused multiply-add, remainder, and square root operations are unimplemented.
+> This project is at an early stage of development. Remainder and square root operations are unimplemented.
 > Implemented operations, however, are expected to be usable, correct, and performant.
 
 ## Representation
