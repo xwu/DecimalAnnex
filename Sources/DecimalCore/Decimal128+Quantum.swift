@@ -71,7 +71,7 @@ extension Decimal128 {
         return other._canonical
       }
 
-      if isInfinite && other.isFinite {
+      if isInfinite && other.isInfinite {
         return _isSignMinus ? -.infinity : .infinity
       }
       _signal(.invalid, into: &flags)

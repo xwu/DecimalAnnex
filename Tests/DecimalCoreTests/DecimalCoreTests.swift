@@ -145,6 +145,14 @@ struct DecimalCoreTests {
 
   @Test
   @available(anyAppleOS 26.0, *)
+  func testQuantized() {
+    let x: Decimal128 = .infinity
+    #expect((-x).quantized(by: x) == -x)
+    #expect((-x).quantized(by: 1).isNaN)
+  }
+
+  @Test
+  @available(anyAppleOS 26.0, *)
   func testReadme() {
     let x: Decimal128 = 1/10
     let y: Decimal128 = 2/10
