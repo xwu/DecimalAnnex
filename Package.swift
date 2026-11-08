@@ -14,14 +14,14 @@ let package = Package(
       targets: ["DecimalAnnex"]),
   ],
   dependencies: [
-    .package(url: "https://github.com/apple/swift-numerics", from: "1.0.0"),
+//  .package(url: "https://github.com/apple/swift-numerics", from: "1.0.0"),
     .package(url: "https://github.com/swiftlang/swift-syntax", from: "604.0.0"),
   ],
   targets: [
     .target(
       name: "DecimalCore",
       dependencies: [
-        .product(name: "RealModule", package: "swift-numerics"),
+//      .product(name: "RealModule", package: "swift-numerics"),
       ],
       swiftSettings: [
           .strictMemorySafety(),
@@ -54,4 +54,10 @@ let package = Package(
 if Context.environment["CORE_MODULE_ONLY"] == "true" {
   package.targets.removeAll { !$0.name.hasPrefix("DecimalCore") }
   package.products.removeAll { !$0.name.hasPrefix("DecimalCore") }
+  package.dependencies.removeAll {
+    switch $0.kind {
+    case .sourceControl(_, "https://github.com/swiftlang/swift-syntax", _): true
+    default: false
+    }
+  }
 }
