@@ -1468,8 +1468,142 @@ extension Decimal128: FloatingPoint {
     self = divided(by: rhs, rounding: rule, &flags)
   }
 
+  @inlinable
+  internal func _remainder(
+    truncating: Bool,
+    dividingBy divisor: Decimal128,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    var x = self, y = divisor
+    guard x._isFiniteNonzero && y._isFiniteNonzero else {
+      if x.isSignalingNaN {
+        _signal(.invalid, into: &flags)
+        x = x._quiet
+      }
+      if y.isSignalingNaN {
+        _signal(.invalid, into: &flags)
+        y = y._quiet
+      }
+      if x.isNaN {
+        return x._canonical
+      }
+      if y.isNaN {
+        return y._canonical
+      }
+
+      if x.isInfinite || y.isZero {
+        _signal(.invalid, into: &flags)
+        return .nan
+      }
+      if y.isInfinite {
+        return x._canonical
+      }
+
+      let e = min(x.exponentBitPattern, y.exponentBitPattern)
+      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113)
+      return x._isSignMinus ? -abs : abs
+    }
+
+    let cy = y.significandBitPattern
+    let cx = x.significandBitPattern
+    var isSignMinus = x._isSignMinus
+    let e: UInt
+    var shift = Int(x.exponentBitPattern) &- Int(y.exponentBitPattern)
+    var residue: UInt128
+
+    if shift < 0 {
+      e = x.exponentBitPattern
+      if -shift > 34 {
+        // Both truncated and nearest quotient are zero.
+        residue = cx
+      } else {
+        let (hi, lo) = cy._multipliedFullWidth(by1e: -shift)
+        if hi != 0 {
+          residue = cx
+        } else if truncating {
+          residue = cx % lo
+        } else {
+          let quo: UInt128
+          if cx < lo {
+            (quo, residue) = (0, cx)
+          } else {
+            (quo, residue) =
+              UInt128._quotientAndRemainder(fullWidth: (0, cx), dividingBy: lo)
+          }
+          // `(quo, residue) = cx.quotientAndRemainder(dividingBy: lo)`
+          let complement = lo &- residue
+          if residue > complement || (residue == complement && (quo & 1) != 0) {
+            residue = complement
+            isSignMinus.toggle()
+          }
+        }
+      }
+    } else {
+      e = y.exponentBitPattern
+      var quo: UInt128
+      (quo, residue) =
+        UInt128._quotientAndRemainder(fullWidth: (0, cx), dividingBy: cy)
+        // `cx.quotientAndRemainder(dividingBy: cy)`
+      while shift > 0 && residue != 0 {
+        let chunk = min(shift, 38)
+        (quo, residue) = UInt128._quotientAndRemainder(
+          fullWidth: residue._multipliedFullWidth(by1e: chunk),
+          dividingBy: cy)
+        shift &-= chunk
+        // Use modular exponentiation for a large exponent gap.
+        if shift > 38 && residue != 0 {
+          // Reserve a final ordinary division to recover quotient parity.
+          let last = (shift &- 1) % 38 &+ 1
+          var n = (shift &- last) / 38
+          var power: UInt128 =
+            ._quotientAndRemainder(
+              fullWidth: unsafe (0, ._exp10[unchecked: 38]),
+              dividingBy: cy).remainder
+            // `._exp10[38] % cy`
+          while n != 0 && residue != 0 {
+            if (n & 1) != 0 {
+              residue = ._quotientAndRemainder(
+                fullWidth: residue.multipliedFullWidth(by: power),
+                dividingBy: cy).remainder
+            }
+            n &>>= 1
+            if n != 0 && residue != 0 {
+              power = ._quotientAndRemainder(
+                fullWidth: power.multipliedFullWidth(by: power),
+                dividingBy: cy).remainder
+            }
+          }
+          shift = last
+        }
+      }
+      if !truncating {
+        let complement = cy &- residue
+        // A stale quotient is harmless when `residue == 0`.
+        if residue > complement || (residue == complement && (quo & 1) != 0) {
+          residue = complement
+          isSignMinus.toggle()
+        }
+      }
+    }
+
+    assert(residue < ._1e34)
+    let abs =
+      Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | residue)
+    return isSignMinus ? -abs : abs
+  }
+
+  @inline(always)
   public func remainder(dividingBy other: Decimal128) -> Decimal128 {
-    fatalError("Not implemented")
+    var flags: DecimalFloatingPointStatusFlags = []
+    return _remainder(truncating: false, dividingBy: other, &flags)
+  }
+
+  @inline(always)
+  public func remainder(
+    dividingBy other: Decimal128,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    _remainder(truncating: false, dividingBy: other, &flags)
   }
 
   @inline(always)
@@ -1477,13 +1611,39 @@ extension Decimal128: FloatingPoint {
     self = remainder(dividingBy: other)
   }
 
+  @inline(always)
+  public mutating func formRemainder(
+    dividingBy other: Decimal128,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = remainder(dividingBy: other, &flags)
+  }
+
+  @inline(always)
   public func truncatingRemainder(dividingBy other: Decimal128) -> Decimal128 {
-    fatalError("Not implemented")
+    var flags: DecimalFloatingPointStatusFlags = []
+    return _remainder(truncating: true, dividingBy: other, &flags)
+  }
+
+  @inline(always)
+  public func truncatingRemainder(
+    dividingBy other: Decimal128,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    _remainder(truncating: true, dividingBy: other, &flags)
   }
 
   @inline(always)
   public mutating func formTruncatingRemainder(dividingBy other: Decimal128) {
     self = truncatingRemainder(dividingBy: other)
+  }
+
+  @inline(always)
+  public mutating func formTruncatingRemainder(
+    dividingBy other: Decimal128,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = truncatingRemainder(dividingBy: other, &flags)
   }
 
   @usableFromInline
