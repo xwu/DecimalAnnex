@@ -49,6 +49,13 @@ struct DecimalCoreTests {
 
   @Test
   @available(anyAppleOS 26.0, *)
+  func testULP() {
+    let x = Decimal128.infinity
+    #expect(x.ulp.isNaN)
+  }
+
+  @Test
+  @available(anyAppleOS 26.0, *)
   func testEquatable() {
     let x = Decimal128(
       _sign: .minus,

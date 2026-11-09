@@ -73,7 +73,7 @@ extension Decimal128: FloatingPoint {
   @inlinable
   public var ulp: Decimal128 {
     guard _isFiniteNonzero else {
-      if isNaN { return .nan }
+      if !isFinite { return .nan }
       return .leastNonzeroMagnitude
     }
     let e = exponentBitPattern
