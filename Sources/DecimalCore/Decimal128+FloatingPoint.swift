@@ -1556,14 +1556,28 @@ extension Decimal128: FloatingPoint {
       e = y.exponentBitPattern
       var cx_ = cx
       if shift > 0 {
+        if shift >= 152 && cx_ >= cy {
+          // Discover exact multiples up front to avoid setting up for modular
+          // exponentiation if we don't have to.
+          cx_ = ._quotientAndRemainder(
+            fullWidth: (0, cx_),
+            dividingBy: cy).remainder
+          if cx_ == 0 {
+            let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113)
+            return isSignMinus ? -abs : abs
+          }
+        }
+
+        let last = (shift &- 1) % 38 &+ 1
+        // See if we can decrease the total number of 38-digit chunks by one,
+        // which depends on whether `cx_ * (10 ** last)` would fit in `UInt128`.
+        //
         // See explanatory comment in `UInt128._commonLogarithm`.
         // Note that here we underestimate.
-        let n = min(shift, (77 &* cx.leadingZeroBitCount) &>> 8)
-        cx_ = unsafe cx &* ._exp10[unchecked: n]
-        shift &-= n
-        if shift > 0 && cx_ <= .max / 10 {
-          cx_ &*= 10
-          shift &-= 1
+        let estimate = (77 &* cx_.leadingZeroBitCount) &>> 8
+        if last <= estimate {
+          cx_ = unsafe cx_ &* ._exp10[unchecked: last]
+          shift &-= last
         }
       }
       // Crossover to modular exponentiation starting at four complete chunks of
