@@ -1087,20 +1087,6 @@ extension Decimal128: FloatingPoint {
     let lc = lhs.significandBitPattern
     let rc = rhs.significandBitPattern
 
-    // TODO: For `lc < rc`, consider removing exact factors of 10 from `rc`.
-    //
-    // Use `_quotientIfExactDividingBy...` helpers to reach `rc == 1` or
-    // `lc >= rc` to expose the corresponding fast paths.
-    //
-    // Removing `10**k` requires `e -= k`; save the original `e`
-    // as the preferred exponent before doing so. Keep these as integer
-    // intermediates: the reduced divisor's exponent may not fit in `rhs`.
-    //
-    // Both exact early returns below must then honor that original preferred
-    // exponent (e.g., 100 / 2000 must produce 5e-2, not 50e-3), as must the
-    // later `rem == 0` path. `_pack(preferredBiasedExponent:)` can handle this.
-    //
-    // Benchmark the screening cost for divisors without trailing zeros too.
     if rc == 1 {
       if e >= 0 && e <= 12287 {
         let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | lc)
@@ -1511,6 +1497,34 @@ extension Decimal128: FloatingPoint {
     var shift = Int(x.exponentBitPattern) &- Int(y.exponentBitPattern)
     var residue: UInt128
 
+    // Fast path for remainder dividing by powers of ten.
+    let ctz = UInt64(truncatingIfNeeded: cy).trailingZeroBitCount
+    if unsafe ctz <= 33 && cy == ._exp10[unchecked: ctz] {
+      let e = min(x.exponentBitPattern, y.exponentBitPattern)
+      let n = ctz &- shift
+      if n <= 0 {
+        let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113)
+        return isSignMinus ? -abs : abs
+      }
+      if n > 34 { return x }
+      let quo: UInt128
+      (quo, residue) = cx._quotientAndRemainder(dividingBy1e: n)
+      if !truncating {
+        let complement = unsafe ._exp10[unchecked: n] &- residue
+        if residue > complement || (residue == complement && (quo & 1) != 0) {
+          residue = complement
+          isSignMinus.toggle()
+        }
+      }
+      if shift > 0 {
+        // Adjust significand for the preferred exponent.
+        residue &*= unsafe ._exp10[unchecked: shift]
+      }
+      let abs =
+        Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | residue)
+      return isSignMinus ? -abs : abs
+    }
+
     if shift < 0 {
       e = x.exponentBitPattern
       if -shift > 34 {
@@ -1540,48 +1554,77 @@ extension Decimal128: FloatingPoint {
       }
     } else {
       e = y.exponentBitPattern
-      var quo: UInt128
-      (quo, residue) =
-        UInt128._quotientAndRemainder(fullWidth: (0, cx), dividingBy: cy)
-        // `cx.quotientAndRemainder(dividingBy: cy)`
-      while shift > 0 && residue != 0 {
-        let chunk = min(shift, 38)
-        (quo, residue) = UInt128._quotientAndRemainder(
-          fullWidth: residue._multipliedFullWidth(by1e: chunk),
-          dividingBy: cy)
-        shift &-= chunk
-        // Use modular exponentiation for a large exponent gap.
-        if shift > 38 && residue != 0 {
-          // Reserve a final ordinary division to recover quotient parity.
-          let last = (shift &- 1) % 38 &+ 1
-          var n = (shift &- last) / 38
-          var power: UInt128 =
-            ._quotientAndRemainder(
-              fullWidth: unsafe (0, ._exp10[unchecked: 38]),
-              dividingBy: cy).remainder
-            // `._exp10[38] % cy`
-          while n != 0 && residue != 0 {
-            if (n & 1) != 0 {
-              residue = ._quotientAndRemainder(
-                fullWidth: residue.multipliedFullWidth(by: power),
-                dividingBy: cy).remainder
-            }
-            n &>>= 1
-            if n != 0 && residue != 0 {
-              power = ._quotientAndRemainder(
-                fullWidth: power.multipliedFullWidth(by: power),
-                dividingBy: cy).remainder
-            }
-          }
-          shift = last
+      var cx_ = cx
+      if shift > 0 {
+        // See explanatory comment in `UInt128._commonLogarithm`.
+        // Note that here we underestimate.
+        let n = min(shift, (77 &* cx.leadingZeroBitCount) &>> 8)
+        cx_ = unsafe cx &* ._exp10[unchecked: n]
+        shift &-= n
+        if shift > 0 && cx_ <= .max / 10 {
+          cx_ &*= 10
+          shift &-= 1
         }
       }
-      if !truncating {
-        let complement = cy &- residue
-        // A stale quotient is harmless when `residue == 0`.
-        if residue > complement || (residue == complement && (quo & 1) != 0) {
-          residue = complement
-          isSignMinus.toggle()
+      // Crossover to modular exponentiation starting at four complete chunks of
+      // 38 digits, as determined by the number of remainder operations.
+      if shift < 152 {
+        var quo: UInt128
+        (quo, residue) =
+          UInt128._quotientAndRemainder(fullWidth: (0, cx_), dividingBy: cy)
+          // `cx_.quotientAndRemainder(dividingBy: cy)`
+        while shift > 0 && residue != 0 {
+          let chunk = min(shift, 38)
+          (quo, residue) = UInt128._quotientAndRemainder(
+            fullWidth: residue._multipliedFullWidth(by1e: chunk),
+            dividingBy: cy)
+          shift &-= chunk
+        }
+        if !truncating {
+          let complement = cy &- residue
+          // A stale quotient is harmless when `residue == 0`.
+          if residue > complement || (residue == complement && (quo & 1) != 0) {
+            residue = complement
+            isSignMinus.toggle()
+          }
+        }
+      } else {
+        // Use modular exponentiation for a large exponent gap.
+        var n = shift / 38
+        shift %= 38
+        residue = cx_
+        var power: UInt128 =
+          ._quotientAndRemainder(
+            fullWidth: unsafe (0, ._exp10[unchecked: 38]),
+            dividingBy: cy).remainder
+          // `._exp10[38] % cy`
+        while n != 0 && residue != 0 {
+          if (n & 1) != 0 {
+            residue = ._quotientAndRemainder(
+              fullWidth: residue.multipliedFullWidth(by: power),
+              dividingBy: cy).remainder
+          }
+          n &>>= 1
+          if n != 0 && residue != 0 {
+            power = ._quotientAndRemainder(
+              fullWidth: power.multipliedFullWidth(by: power),
+              dividingBy: cy).remainder
+          }
+        }
+        if shift != 0 && residue != 0 {
+          residue = ._quotientAndRemainder(
+            fullWidth: residue._multipliedFullWidth(by1e: shift),
+            dividingBy: cy).remainder
+        }
+        if !truncating {
+          let complement = cy &- residue
+          // For exponent gaps at least 112, we can never have a tie that
+          // requires consulting quotient parity.
+          assert(residue != complement)
+          if residue > complement {
+            residue = complement
+            isSignMinus.toggle()
+          }
         }
       }
     }

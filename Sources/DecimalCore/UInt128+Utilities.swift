@@ -279,7 +279,10 @@ extension UInt128 {
     dividingBy divisor: Self
   ) -> (quotient: Self, remainder: Self) {
     precondition(dividend.high < divisor && divisor < ._1e34)
-    if dividend.high == 0 && divisor <= 0xffff_ffff_ffff_ffff /* UInt64.max */ {
+    if dividend.high == 0 && (
+      divisor <= 0xffff_ffff_ffff_ffff /* UInt64.max */ ||
+        (dividend.low &>> 10) < divisor /* Empirically derived crossover. */
+    ) {
       return dividend.low.quotientAndRemainder(dividingBy: divisor)
     }
 
