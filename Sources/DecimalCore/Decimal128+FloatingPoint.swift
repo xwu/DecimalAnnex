@@ -682,14 +682,14 @@ extension Decimal128: FloatingPoint {
         let cz_ = unsafe cz &* ._exp10[unchecked: 33 &- logcz]
         divisor = unsafe ._exp10[unchecked: n_]
         var (q, r) =
-        if cxy.high == 0 {
-          cxy.low < divisor
-          ? (0, cxy.low)
-          : cxy.low._quotientAndRemainder(dividingBy1e: n_)
-        } else {
-          UInt128._quotientAndRemainder(
-            fullWidth: (cxy.high, cxy.low), dividingBy1e: n_)
-        }
+          if cxy.high == 0 {
+            cxy.low < divisor
+              ? (0, cxy.low)
+              : cxy.low._quotientAndRemainder(dividingBy1e: n_)
+          } else {
+            UInt128._quotientAndRemainder(
+              fullWidth: (cxy.high, cxy.low), dividingBy1e: n_)
+          }
         if sameSign {
           q &+= cz_
         } else {
@@ -1552,21 +1552,54 @@ extension Decimal128: FloatingPoint {
     return Self(sign: sign, exponentBitPattern: 6176, significandBitPattern: c)
   }
 
+  /// Returns this value rounded to the nearest integral value
+  /// (ties away from zero).
+  ///
+  /// This method implements the `roundToIntegralTiesToAway` operation defined
+  /// by the IEEE 754 specification.
+  ///
+  /// - Returns: The nearest integral value, rounding ties away from zero.
   @inline(always)
   public func rounded() -> Decimal128 {
     _rounded(.toNearestOrAwayFromZero)
   }
 
+  /// Returns this value rounded to an integral value using the specified
+  /// rounding rule.
+  ///
+  /// For more information about the available rounding rules, see the
+  /// `FloatingPointRoundingRule` enumeration. To round a value using the
+  /// default "schoolbook rounding" of `.toNearestOrAwayFromZero`, you can use
+  /// the shorter `rounded()` method instead.
+  ///
+  /// This method implements the `roundToIntegralTiesToAway`,
+  /// `roundToIntegralTiesToEven`, `roundToIntegralTowardNegative`,
+  /// `roundToIntegralTowardPositive`, and `roundToIntegralTowardZero`
+  /// operations defined by the IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - rule: The rounding rule to use.
+  /// - Returns: The integral value found by rounding using `rule`.
   @inline(always)
   public func rounded(_ rule: FloatingPointRoundingRule) -> Decimal128 {
     _rounded(.init(rule))
   }
 
+  /// Rounds this value to the nearest integral value (ties away from zero).
   @inline(always)
   public mutating func round() {
     self = rounded()
   }
 
+  /// Rounds this value to an integral value using the specified rounding rule.
+  ///
+  /// For more information about the available rounding rules, see the
+  /// `FloatingPointRoundingRule` enumeration. To round a value using the
+  /// default "schoolbook rounding" of `.toNearestOrAwayFromZero`, you can use
+  /// the shorter `round()` method instead.
+  ///
+  /// - Parameters:
+  ///   - rule: The rounding rule to use.
   @inline(always)
   public mutating func round(_ rule: FloatingPointRoundingRule) {
     self = rounded(rule)
@@ -1610,6 +1643,17 @@ extension Decimal128: FloatingPoint {
     return Self(sign: sign, exponentBitPattern: 6176, significandBitPattern: c)
   }
 
+  /// Returns this value rounded to the nearest integral value
+  /// (ties away from zero), accumulating status flags.
+  ///
+  /// This method implements the `roundToIntegralExact` operation defined by
+  /// the IEEE 754 specification. If the result of rounding is inexact, then
+  /// `.inexact` will be inserted into `flags`.
+  ///
+  /// - Parameters:
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: The nearest integral value, rounding ties away from zero.
   @inline(always)
   public func rounded(
     _ flags: inout DecimalFloatingPointStatusFlags
@@ -1618,12 +1662,12 @@ extension Decimal128: FloatingPoint {
   }
 
   /// Returns this value rounded to an integral value using the specified
-  /// rounding mode, accumulating status flags.
+  /// rounding rule, accumulating status flags.
   ///
   /// For more information about the available rounding rules, see the
   /// `FloatingPointRoundingRule` enumeration.
   ///
-  /// This method implements the `roundToIntegralExact` operation as defined by
+  /// This method implements the `roundToIntegralExact` operation defined by
   /// the IEEE 754 specification. If the result of rounding is inexact, then
   /// `.inexact` will be inserted into `flags`.
   ///
@@ -1640,11 +1684,30 @@ extension Decimal128: FloatingPoint {
     _rounded(.init(rule), &flags)
   }
 
+  /// Rounds this value to the nearest integral value (ties away from zero),
+  /// accumulating status flags.
+  ///
+  /// If the result of rounding is inexact, then `.inexact` will be inserted
+  /// into `flags`.
+  ///
+  /// - Parameters:
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func round(_ flags: inout DecimalFloatingPointStatusFlags) {
     self = rounded(&flags)
   }
 
+  /// Rounds this value to an integral value using the specified rounding rule,
+  /// accumulating status flags.
+  ///
+  /// If the result of rounding is inexact, then `.inexact` will be inserted
+  /// into `flags`.
+  ///
+  /// - Parameters:
+  ///   - rule: The rounding rule to use.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func round(
     _ rule: FloatingPointRoundingRule,
