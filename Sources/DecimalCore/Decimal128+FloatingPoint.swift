@@ -1825,26 +1825,16 @@ extension Decimal128: FloatingPoint {
       (Double(UInt64(truncatingIfNeeded: radicand &>> 64)) * 0x1p64
         + Double(UInt64(truncatingIfNeeded: radicand))).squareRoot()
       // `Double(radicand).squareRoot()`
-    var estimate: UInt128
-    do {
-      // `estimate = UInt128(estimate_)`
-      let x = estimate_.significandBitPattern | 0x0010_0000_0000_0000
-      let shift = Int(estimate_.exponentBitPattern) &- 1075
-      estimate = UInt128(truncatingIfNeeded: x) << shift
-    }
+
+    var estimate = UInt128(UInt64(estimate_))
     let difference = Int128(radicand) &- Int128(estimate &* estimate)
     let differenceMagnitude_ =
       Double(UInt64(truncatingIfNeeded: difference.magnitude &>> 64)) * 0x1p64
         + Double(UInt64(truncatingIfNeeded: difference.magnitude))
       // `Double(difference.magnitude)`
-    let correction_ = (differenceMagnitude_ / (estimate_ + estimate_)).rounded()
-    let correction: UInt128
-    do {
-      // `correction = UInt128(correction_)`
-      let x = correction_.significandBitPattern | 0x0010_0000_0000_0000
-      let shift = Int(correction_.exponentBitPattern) &- 1075
-      correction = UInt128(truncatingIfNeeded: x) << shift
-    }
+    let correction_ =
+      (differenceMagnitude_ / (estimate_ + estimate_)).rounded()
+    let correction = UInt128(UInt64(correction_))
     if difference < 0 {
       estimate &-= correction
     } else {
