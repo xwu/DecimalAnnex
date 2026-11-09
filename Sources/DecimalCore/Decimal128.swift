@@ -202,6 +202,11 @@ extension Decimal128 {
     Self(bitPattern: 1)
   }
 
+  /// The mathematical constant pi (π), approximately equal to 3.14159.
+  ///
+  /// When measuring an angle in radians, π is equivalent to a half-turn.
+  ///
+  /// This value is rounded to the nearest representable value (ties to even).
   @inlinable
   public static var pi: Decimal128 {
     Self(bitPattern: (6143 &<< 113) | 3_141_592_653_589_793_238_462_643_383_279_503)

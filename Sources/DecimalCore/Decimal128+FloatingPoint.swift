@@ -70,6 +70,17 @@ extension Decimal128: FloatingPoint {
   }
 
   // TODO: Clarify documentation for `FloatingPoint.ulp`.
+  /// The unit in the last place of this value.
+  ///
+  /// For most finite values `x`, this is the difference between `x.magnitude`
+  /// and the next greater representable value. If `x` is not a finite number,
+  /// its `ulp` is NaN. The value of `greatestFiniteMagnitude.ulp` is finite,
+  /// even though the next greater representable value is `infinity`.
+  ///
+  /// Equal finite values have the same `ulp` even when they have different
+  /// quantums.
+  ///
+  /// See also the `ulpOfOne` static property.
   @inlinable
   public var ulp: Decimal128 {
     guard _isFiniteNonzero else {
@@ -1655,6 +1666,28 @@ extension Decimal128: FloatingPoint {
     return _remainder(truncating: false, dividingBy: other, &flags)
   }
 
+  /// Returns the remainder of this value divided by the given value,
+  /// accumulating status flags.
+  ///
+  /// For two finite values `x` and `y`, where `y` is nonzero, the remainder `r`
+  /// of dividing `x` by `y` satisfies `x == y * q + r`, where `q` is the
+  /// integer nearest to `x / y`. If `x / y` is exactly halfway between two
+  /// integers, `q` is chosen to be even. Note that `q` is *not* `x / y`
+  /// computed in floating-point arithmetic, and that `q` may not be
+  /// representable in any available integer type.
+  ///
+  /// If this value and `other` are both finite numbers and `other` is nonzero,
+  /// the remainder has magnitude at most half of `other.magnitude`. The result
+  /// is always exact.
+  ///
+  /// This method implements the `remainder` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - other: The value to use when dividing this value.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: The remainder of this value divided by `other`.
   @inline(always)
   public func remainder(
     dividingBy other: Decimal128,
@@ -1668,6 +1701,24 @@ extension Decimal128: FloatingPoint {
     self = remainder(dividingBy: other)
   }
 
+  /// Replaces this value with the remainder of itself divided by the given
+  /// value, accumulating status flags.
+  ///
+  /// For two finite values `x` and `y`, where `y` is nonzero, the remainder `r`
+  /// of dividing `x` by `y` satisfies `x == y * q + r`, where `q` is the
+  /// integer nearest to `x / y`. If `x / y` is exactly halfway between two
+  /// integers, `q` is chosen to be even. Note that `q` is *not* `x / y`
+  /// computed in floating-point arithmetic, and that `q` may not be
+  /// representable in any available integer type.
+  ///
+  /// If this value and `other` are both finite numbers and `other` is nonzero,
+  /// the remainder has magnitude at most half of `other.magnitude`. The result
+  /// is always exact.
+  ///
+  /// - Parameters:
+  ///   - other: The value to use when dividing this value.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func formRemainder(
     dividingBy other: Decimal128,
@@ -1682,6 +1733,24 @@ extension Decimal128: FloatingPoint {
     return _remainder(truncating: true, dividingBy: other, &flags)
   }
 
+  /// Returns the remainder of this value divided by the given value using
+  /// truncating division, accumulating status flags.
+  ///
+  /// Performing truncating division with floating-point values results in a
+  /// truncated integer quotient and a remainder. For values `x` and `y` and
+  /// their truncated integer quotient `q`, the remainder `r` satisfies
+  /// `x == y * q + r`.
+  ///
+  /// If this value and `other` are both finite numbers and `other` is nonzero,
+  /// the truncating remainder has the same sign as this value and is strictly
+  /// smaller in magnitude than `other`. The result is always exact.
+  ///
+  /// - Parameters:
+  ///   - other: The value to use when dividing this value.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: The remainder of this value divided by `other` using
+  ///   truncating division.
   @inline(always)
   public func truncatingRemainder(
     dividingBy other: Decimal128,
@@ -1695,6 +1764,22 @@ extension Decimal128: FloatingPoint {
     self = truncatingRemainder(dividingBy: other)
   }
 
+  /// Replaces this value with the remainder of itself divided by the given
+  /// value using truncating division, accumulating status flags.
+  ///
+  /// Performing truncating division with floating-point values results in a
+  /// truncated integer quotient and a remainder. For values `x` and `y` and
+  /// their truncated integer quotient `q`, the remainder `r` satisfies
+  /// `x == y * q + r`.
+  ///
+  /// If this value and `other` are both finite numbers and `other` is nonzero,
+  /// the truncating remainder has the same sign as this value and is strictly
+  /// smaller in magnitude than `other`. The result is always exact.
+  ///
+  /// - Parameters:
+  ///   - other: The value to use when dividing this value.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func formTruncatingRemainder(
     dividingBy other: Decimal128,
@@ -1860,12 +1945,30 @@ extension Decimal128: FloatingPoint {
     return Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | estimate)
   }
 
+  /// Returns the square root of the value,
+  /// rounding to the nearest representable value (ties to even) if needed.
+  ///
+  /// This method implements the `squareRoot` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Returns: The square root of the value, rounded if needed.
   @inline(always)
   public func squareRoot() -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
     return _squareRoot(rounding: .toNearestOrEven, &flags)
   }
 
+  /// Returns the square root of the value,
+  /// rounding to the nearest representable value (ties to even) if needed
+  /// and accumulating status flags.
+  ///
+  /// This method implements the `squareRoot` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: The square root of the value, rounded if needed.
   @inline(always)
   public func squareRoot(
     _ flags: inout DecimalFloatingPointStatusFlags
@@ -1873,6 +1976,15 @@ extension Decimal128: FloatingPoint {
     _squareRoot(rounding: .toNearestOrEven, &flags)
   }
 
+  /// Returns the square root of the value,
+  /// rounding to a representable value using the given rounding rule if needed.
+  ///
+  /// This method implements the `squareRoot` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - rule: The rounding rule to use for an inexact result.
+  /// - Returns: The square root of the value, rounded if needed.
   @inline(always)
   public func squareRoot(
     rounding rule: FloatingPointRoundingRule
@@ -1881,6 +1993,18 @@ extension Decimal128: FloatingPoint {
     return _squareRoot(rounding: .init(rule), &flags)
   }
 
+  /// Returns the square root of the value,
+  /// rounding to a representable value using the given rounding rule if needed
+  /// and accumulating status flags.
+  ///
+  /// This method implements the `squareRoot` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
+  /// - Returns: The square root of the value, rounded if needed.
   @inline(always)
   public func squareRoot(
     rounding rule: FloatingPointRoundingRule,
@@ -1889,11 +2013,20 @@ extension Decimal128: FloatingPoint {
     _squareRoot(rounding: .init(rule), &flags)
   }
 
+  /// Replaces this value with its square root,
+  /// rounding to the nearest representable value (ties to even) if needed.
   @inline(always)
   public mutating func formSquareRoot() {
     self = squareRoot()
   }
 
+  /// Replaces this value with its square root,
+  /// rounding to the nearest representable value (ties to even) if needed
+  /// and accumulating status flags.
+  ///
+  /// - Parameters:
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func formSquareRoot(
     _ flags: inout DecimalFloatingPointStatusFlags
@@ -1901,6 +2034,11 @@ extension Decimal128: FloatingPoint {
     self = squareRoot(&flags)
   }
 
+  /// Replaces this value with its square root,
+  /// rounding to a representable value using the given rounding rule if needed.
+  ///
+  /// - Parameters:
+  ///   - rule: The rounding rule to use for an inexact result.
   @inline(always)
   public mutating func formSquareRoot(
     rounding rule: FloatingPointRoundingRule
@@ -1908,6 +2046,14 @@ extension Decimal128: FloatingPoint {
     self = squareRoot(rounding: rule)
   }
 
+  /// Replaces this value with its square root,
+  /// rounding to a representable value using the given rounding rule if needed
+  /// and accumulating status flags.
+  ///
+  /// - Parameters:
+  ///   - rule: The rounding rule to use for an inexact result.
+  ///   - flags: A value that accumulates decimal floating-point arithmetic
+  ///     status flags.
   @inline(always)
   public mutating func formSquareRoot(
     rounding rule: FloatingPointRoundingRule,
