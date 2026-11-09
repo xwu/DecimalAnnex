@@ -1708,7 +1708,156 @@ extension Decimal128: FloatingPoint {
     rounding rule: _DecimalFloatingPointRoundingRule,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
-    fatalError("Not implemented")
+    guard _isFiniteNonzero else {
+      if isNaN {
+        if isSignalingNaN { _signal(.invalid, into: &flags) }
+        return _quiet._canonical
+      }
+      if isInfinite {
+        if _isSignMinus {
+          _signal(.invalid, into: &flags)
+          return .nan
+        }
+        return .infinity
+      }
+      // Halve the represented exponent without unbiasing, then rebiasing.
+      let e = (exponentBitPattern &+ 6176) &>> 1
+      let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113)
+      return _isSignMinus ? -abs : abs
+    }
+    if _isSignMinus {
+      _signal(.invalid, into: &flags)
+      return .nan
+    }
+    var c = significandBitPattern
+    let pe = (Int(exponentBitPattern) &+ 6176) &>> 1
+
+    // FIXME: Include an alternative implementation using integer math
+    // that leaves binary floating-point status flags unaffected which
+    // could be conditionally compiled in.
+    let radicand = (exponentBitPattern & 1) == 0 ? c : c &* 10
+    let estimate_ =
+      (Double(UInt64(truncatingIfNeeded: radicand &>> 64)) * 0x1p64
+        + Double(UInt64(truncatingIfNeeded: radicand))).squareRoot()
+      // `Double(radicand).squareRoot()`
+    var estimate: UInt128
+    do {
+      // `estimate = UInt128(estimate_)`
+      let x = estimate_.significandBitPattern | 0x0010_0000_0000_0000
+      let shift = Int(estimate_.exponentBitPattern) &- 1075
+      estimate = UInt128(truncatingIfNeeded: x) << shift
+    }
+    let difference = Int128(radicand) &- Int128(estimate &* estimate)
+    let differenceMagnitude_ =
+      Double(UInt64(truncatingIfNeeded: difference.magnitude &>> 64)) * 0x1p64
+        + Double(UInt64(truncatingIfNeeded: difference.magnitude))
+      // `Double(difference.magnitude)`
+    let correction_ = (differenceMagnitude_ / (estimate_ + estimate_)).rounded()
+    let correction: UInt128
+    do {
+      // `correction = UInt128(correction_)`
+      let x = correction_.significandBitPattern | 0x0010_0000_0000_0000
+      let shift = Int(correction_.exponentBitPattern) &- 1075
+      correction = UInt128(truncatingIfNeeded: x) << shift
+    }
+    if difference < 0 {
+      estimate &-= correction
+    } else {
+      estimate &+= correction
+    }
+    if estimate &* estimate == radicand {
+      // Exact root.
+      return Self(
+        bitPattern: UInt128(truncatingIfNeeded: pe) &<< 113 | estimate)
+    }
+
+    // Scale raw significand to 67 or 68 digits, preserving exponent parity.
+    var n = 66 &- c._commonLogarithm
+    n &+= (Int(exponentBitPattern) &- n) & 1
+    let c_: (high: UInt128, low: UInt128)
+    if n > 38 {
+      c &*= unsafe ._exp10[unchecked: n &- 38]
+      c_ = c._multipliedFullWidth(by1e: 38)
+    } else {
+      c_ = c._multipliedFullWidth(by1e: n)
+    }
+    var e = (Int(exponentBitPattern) &+ 6176 &- n) &>> 1
+
+    let scale: UInt128 = unsafe ._exp10[unchecked: n &>> 1]
+    let scale_ =
+      Double(UInt64(truncatingIfNeeded: scale &>> 64)) * 0x1p64
+        + Double(UInt64(truncatingIfNeeded: scale))
+      // `Double(scale)`
+    let scaled_ = estimate_ * scale_
+    do {
+      // `estimate = min(UInt128(scaled_), ._1e34 &- 1)`
+      let x = scaled_.significandBitPattern | 0x0010_0000_0000_0000
+      let shift = Int(scaled_.exponentBitPattern) &- 1075 // `shift` is positive.
+      estimate = min(UInt128(truncatingIfNeeded: x) &<< shift, ._1e34 &- 1)
+    }
+    // A single correction step per Newton's method.
+    let quo: UInt128 =
+      ._quotientAndRemainder(fullWidth: c_, dividingBy: estimate).quotient
+    estimate = (estimate &+ quo) &>> 1
+    // The error analysis shows that `0 <= estimate - actual < 3946`,
+    // where `actual` is the actual raw significand of the flooring square root.
+
+    var remainder = c_.low &- estimate &* estimate
+    if Int128(truncatingIfNeeded: remainder) < 0 {
+      let difference = 0 &- remainder
+      // See discussion in `_divided` about computing a ratio using the high
+      // half of each operand.
+      let dh = UInt64(truncatingIfNeeded: difference &>> 64)
+      let _2eh = UInt64(truncatingIfNeeded: (estimate &<< 1) &>> 64)
+      // Here, `_2eh * (_2eh + 2) > dh` is assured, so our estimate of
+      // `floor(difference / (2 * estimate))` by `floor(dh / _2eh)` is either
+      // exact or overestimates the exact flooring quotient by one.
+      //
+      // Subtracting by the exact flooring quotient would leave `estimate`
+      // equal to `actual + 1` or `actual + 2`. So, subtracting by the possible
+      // overestimate would give us `actual`, `actual + 1`, or `actual + 2`.
+      // We'll subtract by one more to center `estimate`, such that it's one of
+      // `actual - 1`, `actual`, or `actual + 1`.
+      estimate &-= UInt128(dh / _2eh) &+ 1
+      remainder = c_.low &- estimate &* estimate
+      if Int128(truncatingIfNeeded: remainder) < 0 {
+        remainder &+= (estimate &<< 1) &- 1
+        estimate &-= 1
+      } else if remainder > estimate &<< 1 {
+        remainder &-= (estimate &<< 1) &+ 1
+        estimate &+= 1
+      }
+    }
+    assert(remainder <= estimate &<< 1)
+
+    if remainder == 0 {
+      Self._select(
+        biasedExponent: &e,
+        nonzeroSignificand: &estimate,
+        boundedPreferredBiasedExponent: pe)
+    } else {
+      _signal(.inexact, into: &flags)
+      let nextAway: Bool =
+        switch rule {
+        case .toNearestOrEven, .toNearestOrAwayFromZero:
+          remainder > estimate
+        case .towardZero, .down:
+          false
+        case .awayFromZero, .up:
+          true
+        @unknown default:
+          fatalError("Unknown rounding rule.")
+        }
+      if nextAway {
+        if estimate == ._1e34 &- 1 {
+          estimate = ._1e33
+          e &+= 1
+        } else {
+          estimate &+= 1
+        }
+      }
+    }
+    return Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | estimate)
   }
 
   @inline(always)
