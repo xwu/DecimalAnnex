@@ -1691,21 +1691,39 @@ extension Decimal128: FloatingPoint {
 
   @usableFromInline
   internal func _squareRoot(
-    rounding rule: _DecimalFloatingPointRoundingRule
+    rounding rule: _DecimalFloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
     fatalError("Not implemented")
   }
 
   @inline(always)
   public func squareRoot() -> Decimal128 {
-    _squareRoot(rounding: .toNearestOrEven)
+    var flags: DecimalFloatingPointStatusFlags = []
+    return _squareRoot(rounding: .toNearestOrEven, &flags)
+  }
+
+  @inline(always)
+  public func squareRoot(
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    _squareRoot(rounding: .toNearestOrEven, &flags)
   }
 
   @inline(always)
   public func squareRoot(
     rounding rule: FloatingPointRoundingRule
   ) -> Decimal128 {
-    _squareRoot(rounding: .init(rule))
+    var flags: DecimalFloatingPointStatusFlags = []
+    return _squareRoot(rounding: .init(rule), &flags)
+  }
+
+  @inline(always)
+  public func squareRoot(
+    rounding rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    _squareRoot(rounding: .init(rule), &flags)
   }
 
   @inline(always)
@@ -1715,9 +1733,24 @@ extension Decimal128: FloatingPoint {
 
   @inline(always)
   public mutating func formSquareRoot(
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = squareRoot(&flags)
+  }
+
+  @inline(always)
+  public mutating func formSquareRoot(
     rounding rule: FloatingPointRoundingRule
   ) {
     self = squareRoot(rounding: rule)
+  }
+
+  @inline(always)
+  public mutating func formSquareRoot(
+    rounding rule: FloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) {
+    self = squareRoot(rounding: rule, &flags)
   }
 
   @inlinable
