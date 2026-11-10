@@ -45,7 +45,18 @@ struct DecimalCoreTests {
     #expect(x.description == "3.141592653589793238462643383279503")
   }
 
-  // TODO: Test `nextUp`.
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testNextUp() {
+    var x: Decimal128 = 1
+    #expect(x.nextUp == Decimal128(binaryEncoding: 0x2ffe_314d_c644_8d93_38c1_5b0a_0000_0001))
+    #expect(x.nextUp == x + Decimal128("1e-33")!)
+    x = Decimal128(signOf: -1, magnitudeOf: 0)
+    #expect(x.nextUp == .leastNonzeroMagnitude)
+    x = -1
+    #expect(x.nextUp == Decimal128(binaryEncoding: 0xaffd_ed09_bead_87c0_378d_8e63_ffff_ffff))
+    #expect(x.nextUp == x + Decimal128("1e-34")!)
+  }
 
   @Test
   @available(anyAppleOS 26.0, *)
@@ -103,6 +114,15 @@ struct DecimalCoreTests {
         #expect(Double(i + j).description == (x + y).description + ".0")
       }
     }
+
+    // Sign of exact zero.
+    let x: Decimal128 = 0
+    var flags: DecimalFloatingPointStatusFlags = []
+    var result = x.adding(-x, rounding: .down, &flags)
+    #expect(result.isZero && result.sign == .minus)
+    result = x.adding(-x, &flags)
+    #expect(result.isZero && result.sign == .plus)
+    #expect(flags.isEmpty)
   }
 
   @Test
@@ -115,6 +135,56 @@ struct DecimalCoreTests {
         #expect(Double(i * j).description == (x * y).description + ".0")
       }
     }
+
+    // Directed overflow (cf. woodsbury/decimal128).
+    let x = Decimal128(binaryEncoding: 0x481e_0000_0000_0000_0000_0000_ffff_ffff)
+    let y = Decimal128(binaryEncoding: 0x5ffe_0000_0000_0000_0000_0000_ffff_ffff)
+    #expect(x * y == .infinity) // 4294967295e3055 * 4294967295e611.
+    var flags: DecimalFloatingPointStatusFlags = []
+    let result = x.multiplied(by: y, rounding: .towardZero, &flags)
+    #expect(result == .greatestFiniteMagnitude)
+    #expect(flags == .overflowInexact)
+  }
+
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testDivision() {
+    let one: Decimal128 = 1
+    #expect((one / 10).description == "0.1")
+    #expect((one / 8).description == "0.125")
+    #expect((one / 3).description == "0.3333333333333333333333333333333333")
+    #expect((one.quantized(by: 1/1000) / 2).description == "0.500")
+    #expect((one / Decimal128(signOf: -1, magnitudeOf: 0)) == -.infinity)
+
+    // Directed underflow (cf. woodsbury/decimal128).
+    let x = Decimal128(binaryEncoding: 0xffff_ffff)
+    let y = Decimal128(binaryEncoding: 0x481e_0000_0000_0000_0000_0000_ffff_ffff)
+    #expect(x / y == 0) // 4294967295e-6176 / 4294967295e3055.
+    var flags: DecimalFloatingPointStatusFlags = []
+    let result = x.divided(by: y, rounding: .up, &flags)
+    #expect(result == .leastNonzeroMagnitude)
+    #expect(flags == .underflowInexact)
+  }
+
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testScaleB() {
+    var x = Decimal128("1.2300")!
+    #expect(Decimal128(sign: .plus, exponent: -1, significand: x).description == "0.12300")
+    #expect(Decimal128(sign: .plus, exponent: 0, significand: x).description == "1.2300")
+    #expect(Decimal128(sign: .plus, exponent: 2, significand: x).description == "123.00")
+
+    // Sign composition, not replacement.
+    x.negate()
+    #expect(Decimal128(sign: .minus, exponent: 0, significand: x).description == "1.2300")
+
+    // Boundaries.
+    #expect(Decimal128(sign: .minus, exponent: 1, significand: .greatestFiniteMagnitude)
+      == -.infinity)
+    #expect(Decimal128(sign: .plus, exponent: -1, significand: .leastNormalMagnitude).description
+      == "1e-6144")
+    #expect(Decimal128(sign: .plus, exponent: -1, significand: .leastNonzeroMagnitude, rounding: .up)
+      == .leastNonzeroMagnitude)
   }
 
   @Test
