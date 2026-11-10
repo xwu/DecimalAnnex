@@ -19,8 +19,7 @@ It conforms to the standard library `FloatingPoint` protocol, making it usable i
 The implementation is written in native Swift and has no dependency on Foundation.
 
 > [!NOTE]
-> This project is at an early stage of development.
-> Documentation formatting and in-repository tests are still incomplete.
+> This project is in development. In-repository tests are still incomplete.
 > All implemented operations, however, are expected to be usable, correct, and performant.
 
 ## Representation
