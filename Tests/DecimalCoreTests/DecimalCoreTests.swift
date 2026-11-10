@@ -27,6 +27,13 @@ struct DecimalCoreTests {
       #expect(d == _DPD.decode(e))
       #expect(_DPD.encode(d) == e)
     }
+
+    // Public conversion (cf. dqEncode.decTest).
+    let x = Decimal128("-7.50")!
+    let pattern: UInt128 = 0xa207_8000_0000_0000_0000_0000_0000_03d0
+    #expect(x.decimalEncoding == pattern)
+    #expect(Decimal128(decimalEncoding: pattern) == x)
+    #expect(Decimal128(decimalEncoding: pattern).hasSameQuantum(as: x))
   }
 
   @Test
@@ -67,7 +74,7 @@ struct DecimalCoreTests {
 
   @Test
   @available(anyAppleOS 26.0, *)
-  func testEquatable() {
+  func testEquatableHashable() {
     let x = Decimal128(
       _sign: .minus,
       combinationBitPattern: 6177 << 3,
@@ -79,6 +86,14 @@ struct DecimalCoreTests {
 
     #expect(x == y)
     #expect(!(x == -y))
+
+    let one: Decimal128 = 1
+    #expect(Decimal128("1.00")! == one)
+    #expect(Decimal128("1.00")!.quantum < one.quantum)
+    var set = Set<Decimal128>()
+    set.insert(one)
+    set.insert(Decimal128("1.00")!)
+    #expect(set.count == 1)
   }
 
   @Test
@@ -209,7 +224,17 @@ struct DecimalCoreTests {
     let result = x.squareRoot(&flags)
     #expect(result.isNaN)
     #expect(flags.contains(.invalid))
+  }
 
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testRounding() {
+    var x: Decimal128 = 5/2
+    #expect(x.rounded() == 3)
+    #expect(x.rounded(.toNearestOrEven) == 2)
+
+    x = -1/10
+    #expect(x.rounded().isZero && x.rounded().sign == .minus)
   }
 
   @Test
@@ -292,6 +317,18 @@ struct DecimalCoreTests {
     let x: Decimal128 = .infinity
     #expect((-x).quantized(by: x) == -x)
     #expect((-x).quantized(by: 1).isNaN)
+  }
+
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testNaN() {
+    var x = Decimal128(nan: 0xff, signaling: false)
+    #expect(x.isNaN && !x.isSignalingNaN && x.sign == .plus)
+    #expect(String(reflecting: x) == "nan(0xff)")
+
+    x = -Decimal128(nan: 0x1, signaling: true)
+    #expect(x.isNaN && x.isSignalingNaN && x.sign == .minus)
+    #expect(String(reflecting: x) == "-snan(0x1)")
   }
 
   @Test
