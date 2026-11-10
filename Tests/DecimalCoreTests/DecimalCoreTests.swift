@@ -148,6 +148,21 @@ struct DecimalCoreTests {
 
   @Test
   @available(anyAppleOS 26.0, *)
+  func testFMA() {
+    var x = Decimal128("1.00000000000000001")!
+    var z = -(x + x.quantum)
+    #expect(z.addingProduct(x, x) == Decimal128("1e-34")!)
+
+    x = 10
+    let y = Decimal128("1e6144")!
+    z = -y
+    #expect(z.addingProduct(x, y) == Decimal128("9e6144")!)
+
+    #expect((1 as Decimal128).addingProduct(0, .infinity).isNaN)
+  }
+
+  @Test
+  @available(anyAppleOS 26.0, *)
   func testDivision() {
     let one: Decimal128 = 1
     #expect((one / 10).description == "0.1")
@@ -164,6 +179,37 @@ struct DecimalCoreTests {
     let result = x.divided(by: y, rounding: .up, &flags)
     #expect(result == .leastNonzeroMagnitude)
     #expect(flags == .underflowInexact)
+  }
+
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testRemainder() {
+    #expect((7 as Decimal128).remainder(dividingBy: 2) == -1)
+    #expect((7 as Decimal128).truncatingRemainder(dividingBy: 2) == 1)
+  }
+
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testSquareRoot() {
+    var x = Decimal128("4.00")!
+    #expect(x.squareRoot().description == "2.0")
+
+    x = 2
+    #expect(x.squareRoot().description == "1.414213562373095048801688724209698")
+    #expect(x.squareRoot(rounding: .up).description == "1.414213562373095048801688724209699")
+
+    x = .leastNonzeroMagnitude
+    #expect(x.squareRoot() == Decimal128("1e-3088")!)
+
+    x = Decimal128("-0.00")!
+    #expect(x.squareRoot().description == "-0.0")
+
+    var flags: DecimalFloatingPointStatusFlags = []
+    x = -1
+    let result = x.squareRoot(&flags)
+    #expect(result.isNaN)
+    #expect(flags.contains(.invalid))
+
   }
 
   @Test
@@ -200,6 +246,24 @@ struct DecimalCoreTests {
 
   @Test
   @available(anyAppleOS 26.0, *)
+  func testStringConversion() {
+    let x = "1.0000000000000000000000000000000005"
+    let one: Decimal128 = 1
+    #expect(Decimal128(x)! == one)
+    #expect(Decimal128(x)!.hasSameQuantum(as: one.nextUp))
+    #expect(Decimal128(x, rounding: .toNearestOrAwayFromZero)! == one.nextUp)
+
+    var zero = Decimal128("+0E6789")!
+    #expect(zero.isZero)
+    #expect(zero.hasSameQuantum(as: Decimal128("1e+6111")!))
+
+    zero = Decimal128("-0E-9999")!
+    #expect(zero.isZero)
+    #expect(zero.hasSameQuantum(as: Decimal128("1e-6176")!))
+  }
+
+  @Test
+  @available(anyAppleOS 26.0, *)
   func testDescription() {
     let y = Decimal128(
       _sign: .minus,
@@ -223,6 +287,8 @@ struct DecimalCoreTests {
   @Test
   @available(anyAppleOS 26.0, *)
   func testQuantized() {
+    #expect(((5 as Decimal128) / 4).quantized(by: 1/10).description == "1.2")
+
     let x: Decimal128 = .infinity
     #expect((-x).quantized(by: x) == -x)
     #expect((-x).quantized(by: 1).isNaN)
