@@ -267,6 +267,9 @@ struct DecimalCoreTests {
     #expect(Decimal128(nearest: x).description == "0.1000000000000000055511151231257827")
     #expect(Decimal128(shortest: x) == y)
     #expect(Double(nearest: y) == x)
+
+    let result = MockFloat128(nearest: y)
+    #expect(result.bitPattern == 0x3ffb_9999_9999_9999_9999_9999_9999_999a)
   }
 
   @Test
