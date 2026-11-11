@@ -169,6 +169,44 @@ struct DecimalCoreTests {
     result = x.adding(-x, &flags)
     #expect(result.isZero && result.sign == .plus)
     #expect(flags.isEmpty)
+
+    typealias Case = (
+      x: String,
+      y: String,
+      rule: FloatingPointRoundingRule,
+      result: String,
+      flags: DecimalFloatingPointStatusFlags)
+    let cases: [Case] = [
+      ("-2e35", "6", .up, "-1.999999999999999999999999999999999e35", .inexact),
+      ("-6", "-1e35", .down, "-1.000000000000000000000000000000001e35", .inexact),
+      ("-9.999999999999999999999999999999999e6144", "-1e6076", .awayFromZero, "-inf", .overflowInexact),
+      ("-9.999999999999999999999999999999999e6144", "-1e6110", .down, "-inf", .overflowInexact),
+      ("0e-100", "1", .toNearestOrEven, "1.000000000000000000000000000000000", []),
+      ("1", "-1.000000000000000000000000000000000e35", .toNearestOrAwayFromZero, "-1.000000000000000000000000000000000e35", .inexact),
+      ("1", "-2", .toNearestOrEven, "-1", []),
+      ("1e1", "-10", .toNearestOrEven, "0", []),
+      ("1e1", "-11", .toNearestOrEven, "-1", []),
+      ("1e35", "-6", .toNearestOrEven, "9.999999999999999999999999999999999e34", .inexact),
+      ("1e39", "1000000000000000000000000000000000", .toNearestOrEven, "1.000001000000000000000000000000000e39", []),
+      ("9999999999999999999999999999999999", "1.5", .awayFromZero, "1.000000000000000000000000000000001e34", .inexact),
+      ("9999999999999999999999999999999999", "10", .toNearestOrEven, "1.000000000000000000000000000000001e34", .inexact),
+      ("9.999999999999999999999999999999999e6144", "1e6110", .up, "inf", .overflowInexact),
+      ("-inf", "-inf", .toNearestOrEven, "-inf", []),
+      ("1", "-inf", .toNearestOrEven, "-inf", []),
+      ("snan", "snan", .toNearestOrEven, "nan", .invalid),
+    ]
+    for c in cases {
+      var flags: DecimalFloatingPointStatusFlags = []
+      let actual =
+        Decimal128(c.x)!.adding(Decimal128(c.y)!, rounding: c.rule, &flags)
+      let expected = Decimal128(c.result)!
+      if expected.isNaN {
+        #expect(actual.isNaN && !actual.isSignalingNaN)
+      } else {
+        #expect(actual.bitPattern == expected.bitPattern)
+      }
+      #expect(flags == c.flags)
+    }
   }
 
   @Test
@@ -194,15 +232,43 @@ struct DecimalCoreTests {
     let result = x.multiplied(by: y, rounding: .towardZero, &flags)
     #expect(result == .greatestFiniteMagnitude)
     #expect(flags == .overflowInexact)
+
+    typealias Case = (
+      x: String,
+      y: String,
+      rule: FloatingPointRoundingRule,
+      result: String,
+      flags: DecimalFloatingPointStatusFlags)
+    let cases: [Case] = [
+      ("1", "inf", .toNearestOrEven, "inf", []),
+      ("1", "snan", .toNearestOrEven, "nan", .invalid),
+      ("inf", "1", .toNearestOrEven, "inf", []),
+      ("snan", "1", .toNearestOrEven, "nan", .invalid),
+    ]
+    for c in cases {
+      var flags: DecimalFloatingPointStatusFlags = []
+      let actual =
+        Decimal128(c.x)!.multiplied(
+          by: Decimal128(c.y)!, rounding: c.rule, &flags)
+      let expected = Decimal128(c.result)!
+      if expected.isNaN {
+        #expect(actual.isNaN && !actual.isSignalingNaN)
+      } else {
+        #expect(actual.bitPattern == expected.bitPattern)
+      }
+      #expect(flags == c.flags)
+    }
   }
 
   @Test
   @available(anyAppleOS 26.0, *)
   func testFMA() {
+    // With u = 1e-17, (1 + u)**2 - (1 + 2*u) is u**2.
     var x = Decimal128("1.00000000000000001")!
     var z = -(x + x.quantum)
     #expect(z.addingProduct(x, x) == Decimal128("1e-34")!)
 
+    // The exact product exceeds greatestFiniteMagnitude before cancellation.
     x = 10
     let y = Decimal128("1e6144")!
     z = -y
@@ -213,6 +279,63 @@ struct DecimalCoreTests {
     #expect(z.addingProduct(x, x) == Decimal128("2e-20")!+Decimal128("1e-40")!)
 
     #expect((1 as Decimal128).addingProduct(0, .infinity).isNaN)
+
+    typealias Case = (
+      z: String,
+      x: String,
+      y: String,
+      rule: FloatingPointRoundingRule,
+      result: String,
+      flags: DecimalFloatingPointStatusFlags)
+    let cases: [Case] = [
+      ("-6597176330790615365366253925682318", "-18446744073709551616e-5", "18446744073709551616", .down, "-1.000000000000000000000000000000001e34", .inexact), // The addend's magnitude plus `floor(2**128 / 1e5)` is `1e34`; the product's fractional part remains sticky after the carry.
+      ("2", "-1e-51", "1e-51", .towardZero, "1.999999999999999999999999999999999", .inexact),
+      ("1e-6143", "-1e-6176", "1e-70", .toNearestOrEven, "1.000000000000000000000000000000000e-6143", .underflowInexact),
+      ("-9.999999999999999999999999999999999e6144", "-20e6111", "3.000000000000000000000000000000000e-2", .awayFromZero, "-inf", .overflowInexact),
+      ("1e-6143", "-2e-6176", "3e-3", .toNearestOrEven, "1.000000000000000000000000000000000e-6143", .underflowInexact),
+      ("-9.999999999999999999999999999999999e6144", "-2e6042", "3", .down, "-inf", .overflowInexact),
+      ("0.1", "-4", "5000000000000000000000000000000000", .towardZero, "-1.999999999999999999999999999999999e34", .inexact),
+      ("-0.0", "1", "-0.0", .toNearestOrEven, "-0.0", []),
+      ("1", "1", "-1", .toNearestOrEven, "0", []),
+      ("0", "1", "0", .down, "0", []),
+      ("9.999999999999999999999999999999999e133", "1", "1", .up, "1.000000000000000000000000000000000e134", .inexact),
+      ("0.1", "10", "9999999999999999999999999999999999", .up, "1.000000000000000000000000000000000e35", .inexact),
+      ("1", "1000000000000000000000000000000000", "10", .toNearestOrEven, "1.000000000000000000000000000000000e34", .inexact),
+      ("-1.000000000000000000000000000000000e64", "1000000000000000000000000000000000", "1000000000000000000000000000000000", .toNearestOrEven, "9.900000000000000000000000000000000e65", []),
+      ("1", "1.000000000000000000000000000000000e-4", "1.000000000000000000000000000000000e-4", .toNearestOrEven, "1.000000010000000000000000000000000", []),
+      ("-18446744073709551616.1", "18446744073709551616", "18446744073709551617", .toNearestOrEven, "3.402823669209384634633746074317682e38", .inexact), // With `b = 2**64`, `b * (b + 1) - (b + 0.1)` forces a second borrow.
+      ("9999999999999999999999999999999999", "1e-40", "9999999999999999999999999999999999", .up, "1.000000000000000000000000000000000e34", .inexact),
+      ("0", "1e-6176", "0.5", .toNearestOrEven, "0e-6176", .underflowInexact),
+      ("1e-6176", "1e-6176", "0.5", .toNearestOrEven, "2e-6176", .underflowInexact),
+      ("-11e6111", "1e6111", "1e1", .toNearestOrEven, "-1e6111", []),
+      ("1e6076", "1e6111", "1e1", .toNearestOrEven, "1.000000000000000000000000000000000e6112", .inexact),
+      ("1e69", "2", "-5000000000000000000000000000000000", .toNearestOrAwayFromZero, "1.000000000000000000000000000000000e69", .inexact),
+      ("1", "2", "0.00", .toNearestOrEven, "1.00", []),
+      ("-0.6", "2", "5000000000000000000000000000000000", .toNearestOrEven, "9999999999999999999999999999999999", .inexact),
+      ("9.999999999999999999999999999999999e6144", "20e6111", "3.000000000000000000000000000000000e-2", .up, "inf", .overflowInexact),
+      ("9000000000000000000000000000000005", "0.2", "5000000000000000000000000000000000", .toNearestOrEven, "1.000000000000000000000000000000000e34", .inexact),
+      ("1e-6176", "2e-6176", "3e-102", .awayFromZero, "2e-6176", .underflowInexact),
+      ("1e-6143", "5e-6176", "5e-3", .toNearestOrEven, "1.000000000000000000000000000000000e-6143", .inexact),
+      ("-1", "8.000000000000000000000000000000000e-18", "8.000000000000000000000000000000000e-18", .toNearestOrEven, "-0.9999999999999999999999999999999999", .inexact),
+      ("5e65", "9999999999999999999999999999999999", "9999999999999999999999999999999999", .toNearestOrEven, "1.005000000000000000000000000000000e68", .inexact),
+      ("1", "9.999999999999999999999999999999999e6144", "100001", .toNearestOrEven, "inf", .overflowInexact),
+      ("snan", "2", "3", .toNearestOrEven, "nan", .invalid),
+      ("-inf", "inf", "-1", .toNearestOrEven, "-inf", []),
+      ("1", "snan", "snan", .toNearestOrEven, "nan", .invalid),
+    ]
+    for c in cases {
+      var flags: DecimalFloatingPointStatusFlags = []
+      let actual =
+        Decimal128(c.z)!.addingProduct(
+          Decimal128(c.x)!, Decimal128(c.y)!, rounding: c.rule, &flags)
+      let expected = Decimal128(c.result)!
+      if expected.isNaN {
+        #expect(actual.isNaN && !actual.isSignalingNaN)
+      } else {
+        #expect(actual.bitPattern == expected.bitPattern)
+      }
+      #expect(flags == c.flags)
+    }
   }
 
   @Test
@@ -236,6 +359,40 @@ struct DecimalCoreTests {
     let result = x.divided(by: y, rounding: .up, &flags)
     #expect(result == .leastNonzeroMagnitude)
     #expect(flags == .underflowInexact)
+
+    typealias Case = (
+      x: String,
+      y: String,
+      rule: FloatingPointRoundingRule,
+      result: String,
+      flags: DecimalFloatingPointStatusFlags)
+    let cases: [Case] = [
+      ("-0.00", "2", .toNearestOrEven, "-0.00", []),
+      ("-1000000000000000000000000000000000e-6144", "6000000000000000000000000000000000", .toNearestOrEven, "-1.6666666666666666666666666666667e-6145", .underflowInexact),
+      ("-1", "1234567", .toNearestOrEven, "-8.100005913004316493151040000259200e-7", .inexact),
+      ("1", "1", .toNearestOrEven, "1", []),
+      ("1e-6176", "3e1", .toNearestOrEven, "0e-6176", .underflowInexact),
+      ("9999999999999999999999999999999999", "-11", .toNearestOrEven, "-909090909090909090909090909090909", []),
+      ("9999999999999999999999999999999999", "100000000000000000001", .toNearestOrEven, "99999999999999.99999899999999999999", .inexact),
+      ("9999999999999999999999999999999999", "10000000000000000000000001", .toNearestOrEven, "999999999.9999999999999998999999999", .inexact),
+      ("9e6111", "-11e-37", .toNearestOrEven, "-inf", .overflowInexact),
+      ("-inf", "2", .toNearestOrEven, "-inf", []),
+      ("-1", "inf", .toNearestOrEven, "-0e-6176", []),
+      ("1", "snan", .toNearestOrEven, "nan", .invalid),
+      ("snan", "1", .toNearestOrEven, "nan", .invalid),
+    ]
+    for c in cases {
+      var flags: DecimalFloatingPointStatusFlags = []
+      let actual =
+        Decimal128(c.x)!.divided(by: Decimal128(c.y)!, rounding: c.rule, &flags)
+      let expected = Decimal128(c.result)!
+      if expected.isNaN {
+        #expect(actual.isNaN && !actual.isSignalingNaN)
+      } else {
+        #expect(actual.bitPattern == expected.bitPattern)
+      }
+      #expect(flags == c.flags)
+    }
   }
 
   @Test
@@ -252,6 +409,39 @@ struct DecimalCoreTests {
 
     let half: Decimal128 = 1/2
     #expect(((3 as Decimal128) / 2).remainder(dividingBy: 1) == -half)
+
+    typealias Case = (
+      x: String,
+      y: String,
+      truncating: Bool,
+      result: String,
+      flags: DecimalFloatingPointStatusFlags)
+    let cases: [Case] = [
+      ("-999999999999999999999999999999999e1", "1000000000000000000000000000000000", false, "10", []),
+      ("0", "1", true, "0", []),
+      ("10e1", "10", true, "0", []),
+      ("4.5", "3", false, "-1.5", []),
+      ("7e152", "3", true, "1", []),
+      ("98e189", "99", true, "89", []),
+      ("9e200", "3", true, "0", []),
+      ("1", "snan", true, "nan", .invalid),
+      ("snan", "1", true, "nan", .invalid),
+    ]
+    for c in cases {
+      var flags: DecimalFloatingPointStatusFlags = []
+      let x = Decimal128(c.x)!
+      let y = Decimal128(c.y)!
+      let actual = c.truncating
+        ? x.truncatingRemainder(dividingBy: y, &flags)
+        : x.remainder(dividingBy: y, &flags)
+      let expected = Decimal128(c.result)!
+      if expected.isNaN {
+        #expect(actual.isNaN && !actual.isSignalingNaN)
+      } else {
+        #expect(actual.bitPattern == expected.bitPattern)
+      }
+      #expect(flags == c.flags)
+    }
   }
 
   @Test
@@ -278,6 +468,28 @@ struct DecimalCoreTests {
 
     x = Decimal128(sign: .plus, exponent: 16, significand: 1) - 1
     #expect((x * x).squareRoot() == x)
+
+    typealias Case = (
+      x: String,
+      rule: FloatingPointRoundingRule,
+      result: String,
+      flags: DecimalFloatingPointStatusFlags)
+    let cases: [Case] = [
+      ("1000000000000000063245553203367587e1", .towardZero, "100000000000000003.1622776601683793", .inexact),
+      ("inf", .toNearestOrEven, "inf", []),
+      ("snan", .toNearestOrEven, "nan", .invalid),
+    ]
+    for c in cases {
+      var flags: DecimalFloatingPointStatusFlags = []
+      let actual = Decimal128(c.x)!.squareRoot(rounding: c.rule, &flags)
+      let expected = Decimal128(c.result)!
+      if expected.isNaN {
+        #expect(actual.isNaN && !actual.isSignalingNaN)
+      } else {
+        #expect(actual.bitPattern == expected.bitPattern)
+      }
+      #expect(flags == c.flags)
+    }
   }
 
   @Test
