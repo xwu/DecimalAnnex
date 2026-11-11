@@ -63,6 +63,8 @@ struct DecimalCoreTests {
     x = -1
     #expect(x.nextUp == Decimal128(binaryEncoding: 0xaffd_ed09_bead_87c0_378d_8e63_ffff_ffff))
     #expect(x.nextUp == x + Decimal128("1e-34")!)
+
+    #expect(Decimal128.greatestFiniteMagnitude.nextUp == .infinity)
   }
 
   @Test
@@ -70,6 +72,10 @@ struct DecimalCoreTests {
   func testULP() {
     let x = Decimal128.infinity
     #expect(x.ulp.isNaN)
+
+    let gfm = Decimal128.greatestFiniteMagnitude
+    #expect(gfm.ulp == Decimal128("1e6111")!)
+    #expect(gfm.nextDown + gfm.ulp == gfm)
   }
 
   @Test
@@ -90,10 +96,19 @@ struct DecimalCoreTests {
     let one: Decimal128 = 1
     #expect(Decimal128("1.00")! == one)
     #expect(Decimal128("1.00")!.quantum < one.quantum)
+
     var set = Set<Decimal128>()
     set.insert(one)
     set.insert(Decimal128("1.00")!)
     #expect(set.count == 1)
+
+    set.insert(0)
+    #expect(set.count == 2)
+    set.insert(Decimal128(
+      sign: .minus,
+      exponentBitPattern: 42,
+      significandBitPattern: ._1e34)) // Noncanonical zero.
+    #expect(set.count == 2)
   }
 
   @Test
@@ -130,8 +145,24 @@ struct DecimalCoreTests {
       }
     }
 
+    var x = Decimal128(
+      sign: .plus,
+      exponentBitPattern: Decimal128().exponentBitPattern,
+      significandBitPattern:
+        Decimal128.greatestFiniteMagnitude.significandBitPattern)
+    // Not the point of the test but it needs to be right:
+    #expect(x._significandWidth == 33)
+    var y = x + 1/2
+    #expect(y == Decimal128("1e34")!)
+
+    x = Decimal128(sign: .plus, exponent: 70, significand: 1)
+    y = x - 1
+    #expect(y == x)
+    y = x.subtracting(1, rounding: .down)
+    #expect(y == x.nextDown)
+
     // Sign of exact zero.
-    let x: Decimal128 = 0
+    x = 0
     var flags: DecimalFloatingPointStatusFlags = []
     var result = x.adding(-x, rounding: .down, &flags)
     #expect(result.isZero && result.sign == .minus)
@@ -151,8 +182,12 @@ struct DecimalCoreTests {
       }
     }
 
+    var x: Decimal128 = -.leastNonzeroMagnitude
+    #expect(x * (1/2) == 0)
+    #expect(x.multiplied(by: 1/2, rounding: .down) == x)
+
     // Directed overflow (cf. woodsbury/decimal128).
-    let x = Decimal128(binaryEncoding: 0x481e_0000_0000_0000_0000_0000_ffff_ffff)
+    x = Decimal128(binaryEncoding: 0x481e_0000_0000_0000_0000_0000_ffff_ffff)
     let y = Decimal128(binaryEncoding: 0x5ffe_0000_0000_0000_0000_0000_ffff_ffff)
     #expect(x * y == .infinity) // 4294967295e3055 * 4294967295e611.
     var flags: DecimalFloatingPointStatusFlags = []
@@ -173,6 +208,10 @@ struct DecimalCoreTests {
     z = -y
     #expect(z.addingProduct(x, y) == Decimal128("9e6144")!)
 
+    x = 1 + Decimal128(sign: .plus, exponent: -20, significand: 1)
+    z = -1
+    #expect(z.addingProduct(x, x) == Decimal128("2e-20")!+Decimal128("1e-40")!)
+
     #expect((1 as Decimal128).addingProduct(0, .infinity).isNaN)
   }
 
@@ -185,6 +224,9 @@ struct DecimalCoreTests {
     #expect((one / 3).description == "0.3333333333333333333333333333333333")
     #expect((one.quantized(by: 1/1000) / 2).description == "0.500")
     #expect((one / Decimal128(signOf: -1, magnitudeOf: 0)) == -.infinity)
+
+    #expect(Decimal128(UInt128._1e33) / Decimal128(UInt128.max &>> 32)
+            == Decimal128("12621.77448353618888658765704468389")!)
 
     // Directed underflow (cf. woodsbury/decimal128).
     let x = Decimal128(binaryEncoding: 0xffff_ffff)
@@ -201,6 +243,15 @@ struct DecimalCoreTests {
   func testRemainder() {
     #expect((7 as Decimal128).remainder(dividingBy: 2) == -1)
     #expect((7 as Decimal128).truncatingRemainder(dividingBy: 2) == 1)
+
+    #expect(Decimal128(
+              sign: .plus,
+              exponent: 200,
+              significand: 1).remainder(dividingBy: 6)
+            == -2)
+
+    let half: Decimal128 = 1/2
+    #expect(((3 as Decimal128) / 2).remainder(dividingBy: 1) == -half)
   }
 
   @Test
@@ -224,6 +275,9 @@ struct DecimalCoreTests {
     let result = x.squareRoot(&flags)
     #expect(result.isNaN)
     #expect(flags.contains(.invalid))
+
+    x = Decimal128(sign: .plus, exponent: 16, significand: 1) - 1
+    #expect((x * x).squareRoot() == x)
   }
 
   @Test
@@ -235,6 +289,11 @@ struct DecimalCoreTests {
 
     x = -1/10
     #expect(x.rounded().isZero && x.rounded().sign == .minus)
+
+    x = 3 + 1/2
+    #expect(x.rounded() == 4)
+    #expect(x.rounded(.toNearestOrEven) == 4)
+    #expect(x.rounded(.down) == 3)
   }
 
   @Test
@@ -252,6 +311,13 @@ struct DecimalCoreTests {
     x.negate()
     #expect(Decimal128(sign: .minus, exponent: 0, significand: x).description
             == "1.2300")
+
+    // Zero.
+    x = 0
+    var y = Decimal128(sign: .minus, exponent: .max, significand: x)
+    #expect(x == y)
+    y = Decimal128(sign: .plus, exponent: .max, significand: y)
+    #expect(x == y)
 
     // Boundaries.
     #expect(Decimal128(
@@ -333,11 +399,21 @@ struct DecimalCoreTests {
     zero = Decimal128("-0E-9999")!
     #expect(zero.isZero)
     #expect(zero.hasSameQuantum(as: Decimal128("1e-6176")!))
+
+    zero = Decimal128("+0e18446744073709551616")! // Exponent exceeds 64 bits.
+    #expect(zero.isZero)
+    #expect(zero.hasSameQuantum(as: Decimal128("1e+6111")!))
   }
 
   @Test
   @available(anyAppleOS 26.0, *)
   func testDescription() {
+    let x = Decimal128(
+      sign: .minus,
+      exponentBitPattern: 6176,
+      significandBitPattern: ._1e34) // Noncanonical zero.
+    #expect(x.description == "-0")
+
     let y = Decimal128(
       _sign: .minus,
       combinationBitPattern: 6176 << 3,
@@ -362,7 +438,10 @@ struct DecimalCoreTests {
   func testQuantized() {
     #expect(((5 as Decimal128) / 4).quantized(by: 1/10).description == "1.2")
 
-    let x: Decimal128 = .infinity
+    var x: Decimal128 = Decimal128(sign: .plus, exponent: 34, significand: 1)
+    #expect(x.quantized(by: 1).isNaN)
+
+    x = .infinity
     #expect((-x).quantized(by: x) == -x)
     #expect((-x).quantized(by: 1).isNaN)
   }

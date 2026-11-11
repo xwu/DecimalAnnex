@@ -121,6 +121,27 @@ extension Decimal128 {
     }
   }
 
+  /// The minimum number of fractional decimal digits required to represent the
+  /// value's significand exactly.
+  ///
+  /// If this value is a finite nonzero number, `significandWidth` is the number
+  /// of fractional decimal digits required to represent the value of
+  /// `significand` exactly; otherwise, `significandWidth` is `-1`.
+  ///
+  /// For example, `125000` and `0.0125` both have significand equal to `1.25`,
+  /// so `significandWidth` is `2`.
+  @inlinable
+  internal var _significandWidth: Int {
+    guard _isFiniteNonzero else { return -1 }
+    var c = significandBitPattern
+    var e = 0
+    Self._select(
+      biasedExponent: &e,
+      nonzeroSignificand: &c,
+      boundedPreferredBiasedExponent: 33)
+    return c._commonLogarithm
+  }
+
   /// Creates a new instance from the specified sign and bit patterns.
   ///
   /// To create a non-finite value:
