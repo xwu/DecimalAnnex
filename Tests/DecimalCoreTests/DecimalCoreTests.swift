@@ -241,21 +241,59 @@ struct DecimalCoreTests {
   @available(anyAppleOS 26.0, *)
   func testScaleB() {
     var x = Decimal128("1.2300")!
-    #expect(Decimal128(sign: .plus, exponent: -1, significand: x).description == "0.12300")
-    #expect(Decimal128(sign: .plus, exponent: 0, significand: x).description == "1.2300")
-    #expect(Decimal128(sign: .plus, exponent: 2, significand: x).description == "123.00")
+    #expect(Decimal128(sign: .plus, exponent: -1, significand: x).description
+            == "0.12300")
+    #expect(Decimal128(sign: .plus, exponent: 0, significand: x).description
+            == "1.2300")
+    #expect(Decimal128(sign: .plus, exponent: 2, significand: x).description
+            == "123.00")
 
     // Sign composition, not replacement.
     x.negate()
-    #expect(Decimal128(sign: .minus, exponent: 0, significand: x).description == "1.2300")
+    #expect(Decimal128(sign: .minus, exponent: 0, significand: x).description
+            == "1.2300")
 
     // Boundaries.
-    #expect(Decimal128(sign: .minus, exponent: 1, significand: .greatestFiniteMagnitude)
-      == -.infinity)
-    #expect(Decimal128(sign: .plus, exponent: -1, significand: .leastNormalMagnitude).description
-      == "1e-6144")
-    #expect(Decimal128(sign: .plus, exponent: -1, significand: .leastNonzeroMagnitude, rounding: .up)
-      == .leastNonzeroMagnitude)
+    #expect(Decimal128(
+              sign: .minus,
+              exponent: 1,
+              significand: .greatestFiniteMagnitude)
+            == -.infinity)
+    #expect(Decimal128(
+              sign: .plus,
+              exponent: -1,
+              significand: .leastNormalMagnitude).description
+            == "1e-6144")
+    #expect(Decimal128(
+              sign: .plus,
+              exponent: -1,
+              significand: .leastNonzeroMagnitude,
+              rounding: .up)
+            == .leastNonzeroMagnitude)
+  }
+
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testBinaryIntegerConversion() {
+    var x: UInt128 = ._1e34
+    #expect(Decimal128(x) == Decimal128(exactly: x))
+    #expect(Decimal128(x).quantum == 10)
+
+    x += 1
+    #expect(Decimal128(exactly: x) == nil)
+
+    x -= 1 // 1e34.
+    typealias _UInt512 = DoubleWidth<DoubleWidth<UInt128>>
+    var y = _UInt512(UInt128._exp10[30])
+    y *= y
+    y *= y // 1e120.
+    var z = y * _UInt512(x) + 5 * y // 1e154 + 5e120 (midpoint).
+    #expect(Decimal128(z) == Decimal128("1e154")!)
+    #expect(Decimal128(z).quantum == Decimal128(y) * 10)
+    #expect(Decimal128(exactly: z) == nil)
+
+    z += 1
+    #expect(Decimal128(z) == Decimal128("1e154")!.nextUp)
   }
 
   @Test
@@ -267,9 +305,16 @@ struct DecimalCoreTests {
     #expect(Decimal128(nearest: x).description == "0.1000000000000000055511151231257827")
     #expect(Decimal128(shortest: x) == y)
     #expect(Double(nearest: y) == x)
+    #expect(MockFloat128(nearest: y).bitPattern == 0x3ffb_9999_9999_9999_9999_9999_9999_999a)
 
-    let result = MockFloat128(nearest: y)
-    #expect(result.bitPattern == 0x3ffb_9999_9999_9999_9999_9999_9999_999a)
+    let a: Float16 = 1.001
+    #expect(Decimal128(shortest: a).description == "1.001")
+    #expect(Decimal128(nearest: a).description == "1.0009765625") // 1 + 1/1024.
+    #expect(Decimal128(nearest: a) == Decimal128(exactly: a))
+
+    let b: Float16 = 1.00048828125 // 1 + 1/2048 (midpoint).
+    #expect(Float16(nearest: Decimal128("1.00048828125")!) == b)
+    #expect(Float16(nearest: Decimal128("1.00048828126")!) == b.nextUp)
   }
 
   @Test
