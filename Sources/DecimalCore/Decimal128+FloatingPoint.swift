@@ -1289,16 +1289,8 @@ extension Decimal128: FloatingPoint {
         sticky: rr != rc,
         rule
       ) {
-        if quo == ._1e34 &- 1 {
-          if e == 12287 {
-            _signal(.overflowInexact, into: &flags)
-            return isSignMinus ? -.infinity : .infinity
-          }
-          quo = ._1e33
-          e &+= 1
-        } else {
-          quo &+= 1
-        }
+        assert(quo != ._1e34 &- 1)
+        quo &+= 1
       }
       _signal(.inexact, into: &flags)
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | quo)
@@ -1895,10 +1887,11 @@ extension Decimal128: FloatingPoint {
       // `actual - 1`, `actual`, or `actual + 1`.
       estimate &-= UInt128(dh / _2eh) &+ 1
       remainder = c_.low &- estimate &* estimate
-      if Int128(truncatingIfNeeded: remainder) < 0 {
-        remainder &+= (estimate &<< 1) &- 1
-        estimate &-= 1
-      } else if remainder > estimate &<< 1 {
+      // Given the error analysis above, and given that `c_` is a multiple of
+      // `1e33` (hence making `c_.low` divisible by `2**33`), it is possible to
+      // demonstrate a modular contradiction if `estimate == actual + 1`.
+      assert(Int128(truncatingIfNeeded: remainder) >= 0)
+      if remainder > estimate &<< 1 {
         remainder &-= (estimate &<< 1) &+ 1
         estimate &+= 1
       }
