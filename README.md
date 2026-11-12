@@ -18,10 +18,6 @@ It conforms to the standard library `FloatingPoint` protocol, making it usable i
 
 The implementation is written in native Swift and has no dependency on Foundation.
 
-> [!NOTE]
-> This project is in development. In-repository tests are still incomplete.
-> All implemented operations, however, are expected to be usable, correct, and performant.
-
 ## Representation
 
 Decimal floating-point values have a *quantum*: the power of ten associated with their integer coefficient.
