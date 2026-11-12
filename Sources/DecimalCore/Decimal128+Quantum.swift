@@ -110,10 +110,7 @@ extension Decimal128 {
       ) {
         c &+= 1
       }
-      if c >= ._1e34 {
-        _signal(.invalid, into: &flags)
-        return .nan
-      }
+      assert(c < ._1e34) // `c` has been divided by at least 10.
       if digit_ != 0 || sticky { _signal(.inexact, into: &flags) }
     }
     return Self(sign: sign, exponentBitPattern: oe, significandBitPattern: c)
