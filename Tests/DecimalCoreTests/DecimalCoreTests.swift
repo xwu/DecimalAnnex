@@ -64,11 +64,17 @@ struct DecimalCoreTests {
     var x: Decimal128 = 1
     #expect(x.nextUp == Decimal128(binaryEncoding: 0x2ffe_314d_c644_8d93_38c1_5b0a_0000_0001))
     #expect(x.nextUp == x + Decimal128("1e-33")!)
+
     x = Decimal128(signOf: -1, magnitudeOf: 0)
     #expect(x.nextUp == .leastNonzeroMagnitude)
+
     x = -1
     #expect(x.nextUp == Decimal128(binaryEncoding: 0xaffd_ed09_bead_87c0_378d_8e63_ffff_ffff))
     #expect(x.nextUp == x + Decimal128("1e-34")!)
+
+    x = Decimal128("9999999999999999999999999999999999")!
+    #expect(x.nextUp.bitPattern
+            == Decimal128("1.000000000000000000000000000000000e34")!.bitPattern)
 
     #expect(Decimal128.greatestFiniteMagnitude.nextUp == .infinity)
     #expect((-Decimal128.infinity).nextUp == -.greatestFiniteMagnitude)
@@ -81,6 +87,16 @@ struct DecimalCoreTests {
     let normal = Decimal128("10e-6144")!
     #expect(normal.exponentBitPattern == 6176 - 6144)
     #expect(normal.isNormal)
+  }
+
+  @Test
+  @available(anyAppleOS 26.0, *)
+  func testExponentAndSignificand() {
+    #expect(Decimal128("0e-6143")!.exponent == Int.min)
+    #expect(Decimal128.infinity.exponent == Int.max)
+
+    #expect(Decimal128("-12.30")!.significand.bitPattern
+            == Decimal128("1.230")!.bitPattern)
   }
 
   @Test
@@ -583,6 +599,21 @@ struct DecimalCoreTests {
     #expect(Decimal128("1e-100")!.rounded(.up, &flags).bitPattern
             == (1 as Decimal128).bitPattern)
     #expect(flags == .inexact)
+
+    flags = []
+    #expect(Decimal128("2.5")!.rounded(.toNearestOrEven, &flags) == 2)
+    #expect(flags == .inexact)
+
+    #expect(Decimal128("1e-100")!.rounded(.up) == 1)
+
+    let snan = Decimal128.signalingNaN
+    var result = snan.rounded(.toNearestOrEven)
+    #expect(result.isNaN && !result.isSignalingNaN)
+
+    flags = []
+    result = snan.rounded(.toNearestOrEven, &flags)
+    #expect(result.isNaN && !result.isSignalingNaN)
+    #expect(flags == .invalid)
   }
 
   @Test
@@ -631,6 +662,29 @@ struct DecimalCoreTests {
     #expect(Decimal128(sign: .plus, exponent: .max, significand: 1, &flags)
             == .infinity)
     #expect(flags == .overflowInexact)
+
+    typealias Case = (
+      x: Decimal128,
+      exponent: Int,
+      result: Decimal128,
+      flags: DecimalFloatingPointStatusFlags)
+    let cases: [Case] = [
+      (.leastNonzeroMagnitude, -35, Decimal128("0e-6176")!, .underflowInexact),
+      (.infinity, 1, .infinity, []),
+      (.nan, 1, .nan, []),
+      (.signalingNaN, 1, .nan, .invalid),
+    ]
+    for c in cases {
+      var flags: DecimalFloatingPointStatusFlags = []
+      let actual =
+        Decimal128(sign: .plus, exponent: c.exponent, significand: c.x, &flags)
+      if c.result.isNaN {
+        #expect(actual.isNaN && !actual.isSignalingNaN)
+      } else {
+        #expect(actual.bitPattern == c.result.bitPattern)
+      }
+      #expect(flags == c.flags)
+    }
   }
 
   @Test
@@ -660,6 +714,12 @@ struct DecimalCoreTests {
     var flags: DecimalFloatingPointStatusFlags = []
     #expect(Decimal128(midpoint, &flags).bitPattern
             == Decimal128("-1.000000000000000000000000000000002e34")!.bitPattern)
+    #expect(flags == .inexact)
+
+    let nines = Int128(10 * UInt128._1e34) - 1 // `10**35 - 1`.
+    flags = []
+    #expect(Decimal128(nines, &flags).bitPattern
+            == Decimal128("1.000000000000000000000000000000000e35")!.bitPattern)
     #expect(flags == .inexact)
   }
 
@@ -711,6 +771,21 @@ struct DecimalCoreTests {
     let d = Float16(nearest: Decimal128(nan: 1, signaling: true))
     #expect(d.isNaN && !d.isSignalingNaN)
     #expect(d.significandBitPattern & 0xff == 1)
+
+    flags = []
+    #expect(Decimal128(nearest: Float16.zero, &flags).bitPattern
+            == (0 as Decimal128).bitPattern)
+    #expect(flags.isEmpty)
+
+    #expect(Float16(nearest: Decimal128("-0.00")!).bitPattern == 0x8000)
+
+    flags = []
+    #expect(Decimal128(shortest: (2 as Float16), &flags) == 2)
+    #expect(flags.isEmpty)
+
+    flags = []
+    #expect(Decimal128(shortest: Float16.infinity, &flags) == .infinity)
+    #expect(flags.isEmpty)
   }
 
   @Test
@@ -752,6 +827,7 @@ struct DecimalCoreTests {
       ("-sNaN(0X7B)", -Decimal128(nan: 123, signaling: true), []),
       (nines + "501.01", Decimal128("1.000000000000000000000000000000000e37")!, .inexact),
       ("1e-6177", Decimal128("0e-6176")!, .underflowInexact),
+      ("9." + nines + "e6144", Decimal128.infinity, .overflowInexact),
       ("nan(08)", nil, []), // Invalid octal payload.
     ]
     for c in cases {
@@ -808,6 +884,21 @@ struct DecimalCoreTests {
     #expect(x.quantized(by: 1, rounding: .down, &flags).bitPattern
             == (-1 as Decimal128).bitPattern)
     #expect(flags == .inexact)
+
+    flags = []
+    var result = (1 as Decimal128).quantized(by: .signalingNaN, &flags)
+    #expect(result.isNaN && !result.isSignalingNaN)
+    #expect(flags == .invalid)
+
+    flags = []
+    result = Decimal128.signalingNaN.quantized(by: 1, &flags)
+    #expect(result.isNaN && !result.isSignalingNaN)
+    #expect(flags == .invalid)
+
+    flags = []
+    let quantum = Decimal128.signalingNaN.quantum(&flags)
+    #expect(quantum.isNaN && !quantum.isSignalingNaN)
+    #expect(flags == .invalid)
   }
 
   @Test
@@ -825,6 +916,10 @@ struct DecimalCoreTests {
     #expect(!(x < x))
     #expect(!(x >= 1))
     #expect(!(1 >= x))
+    #expect(!(0 <= x))
+
+    let next = x.nextUp
+    #expect(next.isNaN && !next.isSignalingNaN)
 
     var set = Set<Decimal128>()
     set.insert(x)
@@ -833,6 +928,8 @@ struct DecimalCoreTests {
 
     #expect((-Decimal128.signalingNaN).description == "nan")
     #expect((-Decimal128.signalingNaN).debugDescription == "-snan")
+
+    #expect(Decimal128.nan.hasSameQuantum(as: x))
   }
 
   @Test
