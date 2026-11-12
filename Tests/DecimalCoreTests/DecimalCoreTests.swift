@@ -77,6 +77,10 @@ struct DecimalCoreTests {
     #expect(tiny.floatingPointClass == .positiveSubnormal)
     #expect(tiny.isCanonical)
     #expect(tiny.exponent == -6176)
+
+    let normal = Decimal128("10e-6144")!
+    #expect(normal.exponentBitPattern == 6176 - 6144)
+    #expect(normal.isNormal)
   }
 
   @Test
@@ -121,6 +125,10 @@ struct DecimalCoreTests {
       exponentBitPattern: 42,
       significandBitPattern: ._1e34)) // Noncanonical zero.
     #expect(set.count == 2)
+
+    let inf = Decimal128(bitPattern: Decimal128.infinity.bitPattern | 1)
+    #expect(inf == Decimal128.infinity)
+    #expect(inf.hashValue == Decimal128.infinity.hashValue)
   }
 
   @Test
@@ -130,6 +138,7 @@ struct DecimalCoreTests {
     #expect(-2 < Decimal128("-1.00")!)
     #expect(-2 != -Decimal128(nan: 2, signaling: true))
     #expect(-Decimal128.infinity < -1)
+    #expect((2 as Decimal128) >= 1)
 
     let zero = Decimal128(
       sign: .plus,
@@ -144,6 +153,7 @@ struct DecimalCoreTests {
       (Decimal128("0.00")!, zero, false),
       (nan, nan, true),
       (Decimal128("1.00")!, 2, true),
+      (2, 1, false),
       (.infinity, -.infinity, false),
       (-.infinity, ninf, true),
       (.signalingNaN, .nan, true),
@@ -697,6 +707,10 @@ struct DecimalCoreTests {
             == 1 << 127)
     #expect(Float16(nearest: Decimal128.infinity) == .infinity)
     #expect(Float16(nearest: -Decimal128(nan: 10000, signaling: false)).isNaN)
+
+    let d = Float16(nearest: Decimal128(nan: 1, signaling: true))
+    #expect(d.isNaN && !d.isSignalingNaN)
+    #expect(d.significandBitPattern & 0xff == 1)
   }
 
   @Test
@@ -707,6 +721,15 @@ struct DecimalCoreTests {
     #expect(Decimal128(x)! == one)
     #expect(Decimal128(x)!.hasSameQuantum(as: one.nextUp))
     #expect(Decimal128(x, rounding: .toNearestOrAwayFromZero)! == one.nextUp)
+
+    var flags: DecimalFloatingPointStatusFlags = []
+    #expect(Decimal128(x + "1", &flags)?.bitPattern == one.nextUp.bitPattern)
+    #expect(flags == .inexact)
+
+    flags = []
+    #expect(Decimal128("1e-6211", rounding: .up, &flags)?.bitPattern
+            == Decimal128.leastNonzeroMagnitude.bitPattern)
+    #expect(flags == .underflowInexact)
 
     var zero = Decimal128("+0E6789")!
     #expect(zero.isZero)
@@ -797,6 +820,16 @@ struct DecimalCoreTests {
     x = -Decimal128(nan: 0x1, signaling: true)
     #expect(x.isNaN && x.isSignalingNaN && x.sign == .minus)
     #expect(String(reflecting: x) == "-snan(0x1)")
+    #expect(x.isCanonical)
+    #expect(!(x == x))
+    #expect(!(x < x))
+    #expect(!(x >= 1))
+    #expect(!(1 >= x))
+
+    var set = Set<Decimal128>()
+    set.insert(x)
+    set.insert(x)
+    #expect(set.count == 2)
 
     #expect((-Decimal128.signalingNaN).description == "nan")
     #expect((-Decimal128.signalingNaN).debugDescription == "-snan")
