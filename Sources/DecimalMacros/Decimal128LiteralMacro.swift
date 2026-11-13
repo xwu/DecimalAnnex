@@ -1,3 +1,4 @@
+#if Macros
 import DecimalCore
 import SwiftSyntax
 import SwiftSyntaxBuilder
@@ -82,3 +83,4 @@ public struct Decimal128LiteralMacro: ExpressionMacro {
     return sign + digits.filter { $0 != "_" }
   }
 }
+#endif

@@ -1,3 +1,4 @@
+#if Macros
 import Testing
 import SwiftSyntaxMacrosTestSupport
 import DecimalMacros
@@ -83,3 +84,4 @@ struct DecimalMacrosTests {
       fixedSource: "#Decimal128(\(description))")
   }
 }
+#endif

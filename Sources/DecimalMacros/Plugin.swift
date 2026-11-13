@@ -1,3 +1,4 @@
+#if Macros
 import SwiftSyntaxMacros
 import SwiftCompilerPlugin
 
@@ -7,3 +8,9 @@ struct DecimalPlugin: CompilerPlugin {
     Decimal128LiteralMacro.self
   ]
 }
+#else
+@main
+struct DecimalPlugin {
+  static func main() { }
+}
+#endif

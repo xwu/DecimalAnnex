@@ -1,5 +1,6 @@
 @_exported import DecimalCore
 
+#if Macros
 /// Constructs a decimal value from the given literal at compile time.
 ///
 /// Accepts an integer or float literal optionally preceded by `+` or `-`.
@@ -8,3 +9,4 @@
 @freestanding(expression)
 public macro Decimal128(_ literal: Double) -> Decimal128 =
   #externalMacro(module: "DecimalMacros", type: "Decimal128LiteralMacro")
+#endif

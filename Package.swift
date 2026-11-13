@@ -13,6 +13,10 @@ let package = Package(
       name: "DecimalAnnex",
       targets: ["DecimalAnnex"]),
   ],
+  traits: [
+    "Macros",
+    .default(enabledTraits: ["Macros"]),
+  ],
   dependencies: [
 //  .package(url: "https://github.com/apple/swift-numerics", from: "1.0.0"),
     .package(url: "https://github.com/swiftlang/swift-syntax", from: "604.0.0"),
@@ -29,35 +33,45 @@ let package = Package(
     .macro(
       name: "DecimalMacros",
       dependencies: [
-        "DecimalCore",
-        .product(name: "SwiftSyntax", package: "swift-syntax"),
-        .product(name: "SwiftSyntaxBuilder", package: "swift-syntax"),
-        .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
-        .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
-        .product(name: "SwiftDiagnostics", package: "swift-syntax"),
+        .target(name: "DecimalCore", condition: .when(traits: ["Macros"])),
+        .product(
+          name: "SwiftSyntax",
+          package: "swift-syntax",
+          condition: .when(traits: ["Macros"])),
+        .product(
+          name: "SwiftSyntaxBuilder",
+          package: "swift-syntax",
+          condition: .when(traits: ["Macros"])),
+        .product(
+          name: "SwiftSyntaxMacros",
+          package: "swift-syntax",
+          condition: .when(traits: ["Macros"])),
+        .product(
+          name: "SwiftCompilerPlugin",
+          package: "swift-syntax",
+          condition: .when(traits: ["Macros"])),
+        .product(
+          name: "SwiftDiagnostics",
+          package: "swift-syntax",
+          condition: .when(traits: ["Macros"])),
       ]),
     .target(
       name: "DecimalAnnex",
-      dependencies: ["DecimalCore", "DecimalMacros"]),
+      dependencies: [
+        "DecimalCore",
+        .target(name: "DecimalMacros", condition: .when(traits: ["Macros"])),
+      ]),
     .testTarget(
       name: "DecimalCoreTests",
       dependencies: ["DecimalCore"]),
     .testTarget(
       name: "DecimalMacrosTests",
       dependencies: [
-        "DecimalMacros",
-        .product(name: "SwiftSyntaxMacrosTestSupport", package: "swift-syntax")
+        .target(name: "DecimalMacros", condition: .when(traits: ["Macros"])),
+        .product(
+          name: "SwiftSyntaxMacrosTestSupport",
+          package: "swift-syntax",
+          condition: .when(traits: ["Macros"])),
       ]),
   ]
 )
-
-if Context.environment["CORE_MODULE_ONLY"] == "true" {
-  package.targets.removeAll { !$0.name.hasPrefix("DecimalCore") }
-  package.products.removeAll { !$0.name.hasPrefix("DecimalCore") }
-  package.dependencies.removeAll {
-    switch $0.kind {
-    case .sourceControl(_, "https://github.com/swiftlang/swift-syntax", _): true
-    default: false
-    }
-  }
-}
