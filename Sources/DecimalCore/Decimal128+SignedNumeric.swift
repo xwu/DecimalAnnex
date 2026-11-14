@@ -773,7 +773,14 @@ extension Decimal128: AdditiveArithmetic {
   @inline(always)
   public static func - (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
+#if ConsensusNaN
+    return lhs._adding(
+      rhs.isNaN ? rhs : -rhs,
+      rounding: .toNearestOrEven,
+      &flags)
+#else
     return lhs._adding(-rhs, rounding: .toNearestOrEven, &flags)
+#endif
   }
 
   /// Returns the result of subtracting the given value from this value,
@@ -794,7 +801,11 @@ extension Decimal128: AdditiveArithmetic {
     _ rhs: Decimal128,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
+#if ConsensusNaN
+    _adding(rhs.isNaN ? rhs : -rhs, rounding: .toNearestOrEven, &flags)
+#else
     _adding(-rhs, rounding: .toNearestOrEven, &flags)
+#endif
   }
 
   /// Returns the result of subtracting the given value from this value,
@@ -814,7 +825,11 @@ extension Decimal128: AdditiveArithmetic {
     rounding rule: FloatingPointRoundingRule
   ) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
+#if ConsensusNaN
+    return _adding(rhs.isNaN ? rhs : -rhs, rounding: .init(rule), &flags)
+#else
     return _adding(-rhs, rounding: .init(rule), &flags)
+#endif
   }
 
   /// Returns the result of subtracting the given value from this value,
@@ -837,7 +852,11 @@ extension Decimal128: AdditiveArithmetic {
     rounding rule: FloatingPointRoundingRule,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
+#if ConsensusNaN
+    _adding(rhs.isNaN ? rhs : -rhs, rounding: .init(rule), &flags)
+#else
     _adding(-rhs, rounding: .init(rule), &flags)
+#endif
   }
 
   /// Subtracts the second value from the first and stores the difference in the

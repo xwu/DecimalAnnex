@@ -14,6 +14,8 @@ let package = Package(
       targets: ["DecimalAnnex"]),
   ],
   traits: [
+    "CompliantPayload",
+    "ConsensusNaN",
     "Macros",
     .default(enabledTraits: ["Macros"]),
   ],

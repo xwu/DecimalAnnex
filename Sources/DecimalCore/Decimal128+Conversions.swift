@@ -213,7 +213,7 @@ extension BinaryFloatingPoint {
     let format = Self._format
     guard source._isFiniteNonzero else {
       if source.isNaN {
-#if false
+#if CompliantPayload
         // IEEE standard convention.
         let mask = UInt128(
           truncatingIfNeeded: Self.greatestFiniteMagnitude.significandBitPattern
@@ -443,7 +443,7 @@ extension Decimal128 {
     let format = T._format
     if source.isNaN {
       if source.isSignalingNaN { _signal(.invalid, into: &flags) }
-#if false
+#if CompliantPayload
       // IEEE standard convention.
       let mask = ~T.nan.significandBitPattern
 #else
