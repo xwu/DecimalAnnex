@@ -1303,7 +1303,7 @@ extension Decimal128: LosslessStringConvertible {
 
   @inlinable
   internal init?<T: StringProtocol>(
-    _ description: T,
+    _ description: borrowing T,
     _rounding rule: _DecimalFloatingPointRoundingRule,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) {
@@ -1314,7 +1314,7 @@ extension Decimal128: LosslessStringConvertible {
     if let x {
       y = x
     } else {
-      var string = String(description)
+      var string = String(copy description)
       y = string.withUTF8 {
         unsafe ._parse(utf8: $0.span, rounding: rule, &flags)
       }

@@ -504,8 +504,8 @@ extension Decimal128: FloatingPoint {
                 let cx = x.significandBitPattern
                 let cy = y.significandBitPattern
                 nextToward = cx > _5e33 && cy > _5e33 &&
-                  cx.multipliedFullWidth(by: cy) >
-                    _5e33.multipliedFullWidth(by: ._1e34)
+                  cx._multipliedFullWidth(by: cy) >
+                    _5e33._multipliedFullWidth(by: ._1e34)
               } else {
                 nextToward = false
               }
@@ -548,7 +548,7 @@ extension Decimal128: FloatingPoint {
           by: UInt64(truncatingIfNeeded: cy))
       cxy = (0, UInt128(hi) &<< 64 | UInt128(lo))
     } else {
-      cxy = cx.multipliedFullWidth(by: cy)
+      cxy = cx._multipliedFullWidth(by: cy)
     }
     if cxy.high == 0 && cxy.low < ._1e34 && exy >= 0 && exy <= 12287 {
       let isSignMinus = x._isSignMinus != y._isSignMinus
@@ -613,7 +613,7 @@ extension Decimal128: FloatingPoint {
       // Note that here we underestimate.
       n = ((77 &* (255 &- cxy.high.leadingZeroBitCount)) &>> 8) &- 33
       divisor = unsafe UInt128._exp10[unchecked: n]
-      if cxy >= divisor.multipliedFullWidth(by: ._1e34) {
+      if cxy >= divisor._multipliedFullWidth(by: ._1e34) {
         n &+= 1
         divisor &*= 10
       }
@@ -784,7 +784,7 @@ extension Decimal128: FloatingPoint {
           cz_ = cz._multipliedFullWidth(by1e: n_)
         } else {
           let p = unsafe cz &* ._exp10[unchecked: n_ &- 34]
-          cz_ = p.multipliedFullWidth(by: ._1e34)
+          cz_ = p._multipliedFullWidth(by: ._1e34)
         }
       } else {
         cz_ = (0, cz)
@@ -857,7 +857,7 @@ extension Decimal128: FloatingPoint {
           cz_ = cz._multipliedFullWidth(by1e: n_)
         } else {
           let p = unsafe cz &* ._exp10[unchecked: n_ &- 34]
-          cz_ = p.multipliedFullWidth(by: ._1e34)
+          cz_ = p._multipliedFullWidth(by: ._1e34)
         }
       } else if -n_ > logcz {
         cz_ = (0, 0)
@@ -1218,7 +1218,7 @@ extension Decimal128: FloatingPoint {
       n = unsafe 33 &+ delta &+ (lc &* ._exp10[unchecked: delta] < rc ? 1 : 0)
       let dividend = n <= 38
         ? lc._multipliedFullWidth(by1e: n)
-        : (lc * ._exp10[n &- 34]).multipliedFullWidth(by: ._1e34)
+        : (lc * ._exp10[n &- 34])._multipliedFullWidth(by: ._1e34)
       (quo, rem) = UInt128._quotientAndRemainder(
         fullWidth: dividend, dividingBy: rc)
     }
@@ -1587,13 +1587,13 @@ extension Decimal128: FloatingPoint {
         while n != 0 && residue != 0 {
           if (n & 1) != 0 {
             residue = ._quotientAndRemainder(
-              fullWidth: residue.multipliedFullWidth(by: power),
+              fullWidth: residue._multipliedFullWidth(by: power),
               dividingBy: cy).remainder
           }
           n &>>= 1
           if n != 0 && residue != 0 {
             power = ._quotientAndRemainder(
-              fullWidth: power.multipliedFullWidth(by: power),
+              fullWidth: power._multipliedFullWidth(by: power),
               dividingBy: cy).remainder
           }
         }

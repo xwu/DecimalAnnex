@@ -199,7 +199,7 @@ extension Decimal128 {
       true
     } else if e < -5 {
       unsafe hi == 0 || (hi, lo) <
-        UInt128._exp10[unchecked: -e].multipliedFullWidth(by: ._1e33)
+        UInt128._exp10[unchecked: -e]._multipliedFullWidth(by: ._1e33)
     } else if e < 33 {
       unsafe hi == 0 && lo < ._exp10[unchecked: 33 &- e]
     } else {
@@ -233,7 +233,7 @@ extension Decimal128 {
       // Note that here we underestimate.
       var n = ((77 &* (255 &- hi.leadingZeroBitCount)) &>> 8) &- 33
       divisor = unsafe ._exp10[unchecked: n]
-      if (hi, lo) >= divisor.multipliedFullWidth(by: ._1e34) {
+      if (hi, lo) >= divisor._multipliedFullWidth(by: ._1e34) {
         n &+= 1
         divisor &*= 10
       }
@@ -590,7 +590,7 @@ extension Decimal128: AdditiveArithmetic {
     assert(n != 0)
     var (hi, lo) = n <= 38
       ? c1._multipliedFullWidth(by1e: n)
-      : (c1 * ._exp10[n &- 34]).multipliedFullWidth(by: ._1e34)
+      : (c1 * ._exp10[n &- 34])._multipliedFullWidth(by: ._1e34)
     if isSignMinus == rhs._isSignMinus {
       let carry: Bool
       (lo, carry) = lo.addingReportingOverflow(c2)
@@ -977,7 +977,7 @@ extension Decimal128: Numeric {
           by: UInt64(truncatingIfNeeded: rc))
       product = (0, UInt128(hi) &<< 64 | UInt128(lo))
     } else {
-      product = lc.multipliedFullWidth(by: rc)
+      product = lc._multipliedFullWidth(by: rc)
     }
     if product.high == 0 && product.low < ._1e34 && e >= 0 && e <= 12287 {
       let abs = Self(

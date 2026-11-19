@@ -69,6 +69,25 @@ struct DecimalCoreTests {
 
   @Test
   @available(anyAppleOS 26.0, *)
+  func testMultipliedFullWidth() {
+    let fixture: [UInt128] = [
+      0, 1, 0xffff_ffff_ffff_ffff, 1 &<< 64, .max &<< 64, .max &>> 1,
+      1 &<< 127, .max,
+    ]
+    for x in fixture {
+      for y in fixture {
+        #expect(x._multipliedFullWidth(by: y) == x.multipliedFullWidth(by: y))
+      }
+    }
+    for _ in 0...65535 {
+      let x = UInt128.random(in: 0...UInt128.max)
+      let y = UInt128.random(in: 0...UInt128.max)
+      #expect(x._multipliedFullWidth(by: y) == x.multipliedFullWidth(by: y))
+    }
+  }
+
+  @Test
+  @available(anyAppleOS 26.0, *)
   func testPi() {
     let x = Decimal128.pi
     #expect(x.description == "3.141592653589793238462643383279503")

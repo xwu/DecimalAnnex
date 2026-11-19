@@ -102,6 +102,25 @@ extension UInt128 {
     (0xD9C7DCED53C7225596E7BD358C904A22, 88), // 38
   ]
 
+  // The standard library's default implementation of
+  // `multipliedFullWidth(by:)`, specialized for `UInt128`. As of Swift 6.4, the
+  // optimizer doesn't inline the generic implementation into this module's
+  // large functions, even through an always-inlined wrapper.
+  @inlinable
+  @inline(always)
+  internal func _multipliedFullWidth(
+    by other: Self
+  ) -> (high: Self, low: Self) {
+    let mask: Self = 0xffff_ffff_ffff_ffff /* UInt64.max */
+    let (x1, x0) = (self &>> 64, self & mask)
+    let (y1, y0) = (other &>> 64, other & mask)
+    let p00 = x0 &* y0
+    let p01 = x1 &* y0 &+ (p00 &>> 64)
+    let p10 = x0 &* y1 &+ (p01 & mask)
+    let p11 = x1 &* y1 &+ (p01 &>> 64) &+ (p10 &>> 64)
+    return (p11, p10 &<< 64 | p00 & mask)
+  }
+
   @inlinable
   @inline(always)
   internal func _multipliedFullWidth(
@@ -114,7 +133,7 @@ extension UInt128 {
           by: UInt64(truncatingIfNeeded: multiplier))
       return (0, UInt128(hi) &<< 64 | UInt128(lo))
     }
-    return multipliedFullWidth(by: multiplier)
+    return _multipliedFullWidth(by: multiplier)
   }
 
   // Division by constant integer using multiplication and shift
@@ -128,7 +147,7 @@ extension UInt128 {
     }
     let (multiplier, shift): (UInt128, Int) = UInt128._divisionBy1e[exponent]
     let q =
-      (self &>> exponent).multipliedFullWidth(by: multiplier).high &>> shift
+      (self &>> exponent)._multipliedFullWidth(by: multiplier).high &>> shift
     let r = unsafe self &- q &* ._exp10[unchecked: exponent]
     return (q, r)
   }
@@ -154,8 +173,8 @@ extension UInt128 {
     // quotient finally by `shift` as in the helper above, we shift the quotient
     // by `shift + exponent`, since `divisor` is a multiple of `2**exponent`.
     shift &+= exponent
-    var (hi, mid) = dividend.high.multipliedFullWidth(by: multiplier)
-    let (mid_, _) = dividend.low.multipliedFullWidth(by: multiplier)
+    var (hi, mid) = dividend.high._multipliedFullWidth(by: multiplier)
+    let (mid_, _) = dividend.low._multipliedFullWidth(by: multiplier)
     let carry: Bool
     (mid, carry) = mid.addingReportingOverflow(mid_)
     if carry { hi &+= 1 }
@@ -250,6 +269,7 @@ extension UInt128 {
   }
 
   @inlinable
+  @inline(always)
   internal var _commonLogarithm: Int {
     // See discussion at:
     // https://lemire.me/blog/2021/05/28/computing-the-number-of-digits-of-an-integer-quickly/

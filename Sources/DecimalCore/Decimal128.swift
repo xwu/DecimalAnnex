@@ -25,8 +25,10 @@ public struct Decimal128: BitwiseCopyable, Sendable {
 extension Decimal128 {
   @inlinable
   public var sign: FloatingPointSign {
-    let rawValue = Int(truncatingIfNeeded: bitPattern &>> 127)
-    return unsafe FloatingPointSign(rawValue: rawValue).unsafelyUnwrapped
+    @inline(always) get {
+      let rawValue = Int(truncatingIfNeeded: bitPattern &>> 127)
+      return unsafe FloatingPointSign(rawValue: rawValue).unsafelyUnwrapped
+    }
   }
 
   @inlinable
@@ -99,10 +101,12 @@ extension Decimal128 {
   /// and includes extra trailing bits.
   @inlinable
   public var exponentBitPattern: UInt {
-    if magnitude.bitPattern < (0x3 &<< 125) {
-      UInt(truncatingIfNeeded: bitPattern &>> 113) & 0x3fff
-    } else {
-      UInt(truncatingIfNeeded: bitPattern &>> 111) & 0x3fff
+    @inline(always) get {
+      if _combinationBitPattern < 0x18000 {
+        UInt(truncatingIfNeeded: bitPattern &>> 113) & 0x3fff
+      } else {
+        UInt(truncatingIfNeeded: bitPattern &>> 111) & 0x3fff
+      }
     }
   }
 
@@ -114,10 +118,12 @@ extension Decimal128 {
   /// bits; for infinite values, it includes ignored bits.
   @inlinable
   public var significandBitPattern: UInt128 {
-    if magnitude.bitPattern < (0x3 &<< 125) {
-      bitPattern & (1 &<< 113 &- 1)
-    } else {
-      bitPattern & (1 &<< 111 &- 1) | (1 &<< 113)
+    @inline(always) get {
+      if _combinationBitPattern < 0x18000 {
+        bitPattern & (1 &<< 113 &- 1)
+      } else {
+        bitPattern & (1 &<< 111 &- 1) | (1 &<< 113)
+      }
     }
   }
 
@@ -403,14 +409,18 @@ extension Decimal128: Equatable {
       return lhs.isZero && rhs.isZero
     }
 
-    if lhs._isSignMinus != rhs._isSignMinus { return false }
+    // Values with different signs aren't equal, and nor are values with the
+    // same exponent bit pattern, as their bit patterns are known to differ.
+    // Rather than branch on the sign, which is often unpredictable, test both
+    // at once: `d` has the sign difference in bit 14 above the exponent
+    // difference, so the values can only be equal if `d` is in `1...0x3fff`.
+    // For example, 1.50 and 1.5 give 1, 1.25 and -1.25 give 0x4000, and 1.25
+    // and 1.26 give 0.
+    let d = UInt(truncatingIfNeeded: (lhs.bitPattern ^ rhs.bitPattern) &>> 113)
+    guard d &- 1 < 0x3fff else { return false }
 
     var lhs = lhs, rhs = rhs
     var n = Int(lhs.exponentBitPattern) - Int(rhs.exponentBitPattern)
-    // Equivalent finite nonzero values with the same exponent bit pattern must
-    // have the same overall bit pattern, in which case we've already taken the
-    // early exit above.
-    if n == 0 { return false }
     // If necessary, swap operands to simplify the logic that follows.
     if n < 0 {
       swap(&lhs, &rhs)
@@ -421,7 +431,7 @@ extension Decimal128: Equatable {
     if n > 33 { return false }
     let (lc, rc) = (lhs.significandBitPattern, rhs.significandBitPattern)
     guard lc < rc else { return false }
-    return unsafe lc.multipliedFullWidth(by: ._exp10[unchecked: n]) == (0, rc)
+    return unsafe lc._multipliedFullWidth(by: ._exp10[unchecked: n]) == (0, rc)
   }
 }
 
@@ -544,7 +554,7 @@ extension Decimal128: Comparable {
     if n > 33 { return isSwapped ? .less : .greater }
     let (lc, rc) = (lhs.significandBitPattern, rhs.significandBitPattern)
     guard lc < rc else { return isSwapped ? .less : .greater }
-    let scaled = unsafe lc.multipliedFullWidth(by: ._exp10[unchecked: n])
+    let scaled = unsafe lc._multipliedFullWidth(by: ._exp10[unchecked: n])
     if scaled == (0, rc) { return .equivalent }
     return isSwapped
       ? scaled > (0, rc) ? .less : .greater
@@ -607,7 +617,7 @@ extension Decimal128: Comparable {
     if n > 33 { return isSwapped }
     let (lc, rc) = (lhs.significandBitPattern, rhs.significandBitPattern)
     guard lc < rc else { return isSwapped }
-    let scaled = unsafe lc.multipliedFullWidth(by: ._exp10[unchecked: n])
+    let scaled = unsafe lc._multipliedFullWidth(by: ._exp10[unchecked: n])
     return isSwapped ? scaled > (0, rc) : scaled < (0, rc)
   }
 
