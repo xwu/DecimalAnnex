@@ -409,18 +409,23 @@ extension Decimal128: Equatable {
       return lhs.isZero && rhs.isZero
     }
 
-    // Values with different signs aren't equal, and nor are values with the
-    // same exponent bit pattern, as their bit patterns are known to differ.
-    // Rather than branch on the sign, which is often unpredictable, test both
-    // at once: `d` has the sign difference in bit 14 above the exponent
-    // difference, so the values can only be equal if `d` is in `1...0x3fff`.
-    // For example, 1.50 and 1.5 give 1, 1.25 and -1.25 give 0x4000, and 1.25
-    // and 1.26 give 0.
-    let d = UInt(truncatingIfNeeded: (lhs.bitPattern ^ rhs.bitPattern) &>> 113)
-    guard d &- 1 < 0x3fff else { return false }
+    // Obtain the sign and 14-bit exponent at once for finite nonzero values.
+    let lse = UInt(truncatingIfNeeded: lhs.bitPattern &>> 113)
+    let rse = UInt(truncatingIfNeeded: rhs.bitPattern &>> 113)
+    // Two values that don't have identical bit patterns can compare equal only
+    // if their signs match and their exponents *don't* match.
+    //
+    // So, for two equal values with different bit patterns,
+    // `(1...0x3fff).contains(lse ^ rse)`, which is equivalently expressed as:
+    guard (lse ^ rse) &- 1 < 0x3fff else { return false }
 
     var lhs = lhs, rhs = rhs
-    var n = Int(lhs.exponentBitPattern) - Int(rhs.exponentBitPattern)
+    // Since we've established matching signs,
+    //
+    //   var n = Int(lhs.exponentBitPattern) - Int(rhs.exponentBitPattern)
+    //
+    // is equivalently expressed as:
+    var n = Int(lse) - Int(rse)
     // If necessary, swap operands to simplify the logic that follows.
     if n < 0 {
       swap(&lhs, &rhs)

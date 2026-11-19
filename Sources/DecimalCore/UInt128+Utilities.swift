@@ -102,10 +102,8 @@ extension UInt128 {
     (0xD9C7DCED53C7225596E7BD358C904A22, 88), // 38
   ]
 
-  // The standard library's default implementation of
-  // `multipliedFullWidth(by:)`, specialized for `UInt128`. As of Swift 6.4, the
-  // optimizer doesn't inline the generic implementation into this module's
-  // large functions, even through an always-inlined wrapper.
+  // The standard library's default implementation,
+  // specialized for `UInt128` and always inlined.
   @inlinable
   @inline(always)
   internal func _multipliedFullWidth(
