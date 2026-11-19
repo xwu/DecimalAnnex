@@ -2124,7 +2124,7 @@ extension Decimal128: FloatingPoint {
       let nextAway: Bool =
         switch rule {
         case .toNearestOrEven:
-          r > half || (r == half && (q & 1) != 0)
+          r &+ (q & 1) > half
         case .toNearestOrAwayFromZero:
           r >= half
         case .towardZero:
@@ -2138,7 +2138,7 @@ extension Decimal128: FloatingPoint {
         @unknown default:
           fatalError("Unknown rounding rule.")
         }
-      if nextAway { q &+= 1 }
+      q &+= nextAway ? 1 : 0
       _signal(.inexact, into: &flags)
     }
     let abs = Self(bitPattern: 6176 &<< 113 | q)
