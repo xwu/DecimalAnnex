@@ -821,11 +821,16 @@ extension Decimal128 {
 extension Decimal128: Codable {
   public func encode(to encoder: any Encoder) throws {
     var container = encoder.singleValueContainer()
-    try container.encode(binaryEncoding)
+    try container.encode(debugDescription)
   }
 
   public init(from decoder: any Decoder) throws {
     let container = try decoder.singleValueContainer()
-    self = try Self(binaryEncoding: container.decode(UInt128.self))
+    guard let value = try Self(container.decode(String.self)) else {
+      throw DecodingError.dataCorruptedError(
+        in: container,
+        debugDescription: "Invalid string representation of 'Decimal128'.")
+    }
+    self = value
   }
 }
