@@ -5,8 +5,9 @@
 // bit, and bit 0 is the sticky bit--i.e., the OR of all lower bits.
 //
 // See the original reference (and accompanying proof) for details.
+@usableFromInline
 @frozen
-public enum _Cox { }
+internal enum _Cox { }
 
 @available(anyAppleOS 26.0, *)
 extension _Cox {
