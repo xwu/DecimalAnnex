@@ -82,9 +82,12 @@ extension Decimal128 {
       return Self(sign: sign, exponentBitPattern: oe, significandBitPattern: 0)
     }
     let n = Int(exponentBitPattern) - Int(oe)
+    if n == 0 {
+      return self
+    }
     var c = significandBitPattern
-    if n >= 0 {
-      guard n <= 33 - c._commonLogarithm else {
+    if n > 0 {
+      guard unsafe n < 34 && c < ._exp10[unchecked: 34 &- n] else {
         _signal(.invalid, into: &flags)
         return .nan
       }
