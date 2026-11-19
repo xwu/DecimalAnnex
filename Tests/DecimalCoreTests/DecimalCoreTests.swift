@@ -49,6 +49,22 @@ struct DecimalCoreTests {
       let x = UInt128.random(in: 0...UInt128.max)
       #expect(x._commonLogarithm == String(x).count - 1)
     }
+
+    var x: UInt128 = 1
+    while true {
+      #expect((x - 1)._commonLogarithm == String(x - 1).count - 1)
+      #expect(x._commonLogarithm == String(x).count - 1)
+      guard x <= UInt128.max / 2 else { break }
+      x *= 2
+    }
+    x = 1
+    while true {
+      #expect((x - 1)._commonLogarithm == String(x - 1).count - 1)
+      #expect(x._commonLogarithm == String(x).count - 1)
+      guard x <= UInt128.max / 10 else { break }
+      x *= 10
+    }
+    #expect(UInt128.max._commonLogarithm == 38)
   }
 
   @Test
