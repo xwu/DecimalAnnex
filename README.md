@@ -19,14 +19,14 @@ It conforms to the standard library `FloatingPoint` protocol, making it usable i
 The implementation is written in native Swift and has no dependency on Foundation.
 It has been tested (outside this repository) against published corpora, and it benchmarks favorably against reference implementations:
 
-| Operation                      | DecimalAnnex<br>0.2.0 | Intel<br>2.0U5 | Boost<br>`21bb2ed` | Foundation<br>macOS 26.7 |
+| Operation                      | DecimalAnnex<br>0.2.1 | Intel<br>2.0U5 | Boost<br>`21bb2ed` | Foundation<br>macOS 26.7 |
 |--------------------------------|----------------------:|---------------:|-------------------:|-------------------------:|
 | Add                            |               **5.7** |         11.1   |             15.7   |                    424.0 |
 | Subtract                       |               **5.7** |         12.5   |             16.3   |                    406.0 |
 | Multiply                       |               **2.9** |         21.1   |              5.8   |                    327.4 |
 | Divide                         |              **24.7** |         40.8   |             77.5   |                   1522.8 |
 | Fused multiply-add             |              **15.7** |         34.1   |             37.4   |                        — |
-| Round to integer, ties to even |                 7.9   |         10.0   |            **6.2** |                    495.4 |
+| Round to integer, ties to even |               **3.7** |          9.2   |              5.3   |                    515.4 |
 | Convert text to decimal        |              **14.9** |         17.9   |             21.5   |                    478.7 |
 | Convert decimal to text        |                26.3   |       **10.0** |             22.6   |                   1462.3 |
 
