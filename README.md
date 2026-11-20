@@ -21,14 +21,14 @@ It has been tested (outside this repository) against published corpora, and it b
 
 | Operation                      | DecimalAnnex<br>0.2.1 | Intel<br>2.0U5 | Boost<br>`21bb2ed` | Foundation<br>macOS 26.7 |
 |--------------------------------|----------------------:|---------------:|-------------------:|-------------------------:|
-| Add                            |               **5.7** |         11.1   |             15.7   |                    424.0 |
-| Subtract                       |               **5.7** |         12.5   |             16.3   |                    406.0 |
-| Multiply                       |               **2.9** |         21.1   |              5.8   |                    327.4 |
-| Divide                         |              **24.7** |         40.8   |             77.5   |                   1522.8 |
-| Fused multiply-add             |              **15.7** |         34.1   |             37.4   |                        — |
-| Round to integer, ties to even |               **3.7** |          9.2   |              5.3   |                    515.4 |
-| Convert text to decimal        |              **14.9** |         17.9   |             21.5   |                    478.7 |
-| Convert decimal to text        |                26.3   |       **10.0** |             22.6   |                   1462.3 |
+| Add                            |               **6.3** |         11.9   |             16.1   |                    466.6 |
+| Subtract                       |               **6.4** |         14.1   |             16.3   |                    445.6 |
+| Multiply                       |               **3.2** |         23.5   |              5.4   |                    358.8 |
+| Divide                         |              **27.8** |         46.5   |             83.4   |                   1682.6 |
+| Fused multiply-add             |              **17.8** |         38.3   |             40.1   |                        — |
+| Round to integer, ties to even |               **3.9** |         11.0   |            **4.8** |                    540.8 |
+| Convert text to decimal        |              **16.7** |         20.8   |             24.6   |                    545.3 |
+| Convert decimal to text        |                29.2   |       **10.1** |             24.0   |                   1654.3 |
 
 > *Median ns/operation for mixture of 'everyday' operands (50% signed values to two decimal places).
 > Benchmarked on Apple M2 Pro using generated harness.  
