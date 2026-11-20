@@ -140,19 +140,16 @@ extension Decimal128 {
       var (q, r) = c._quotientAndRemainder(dividingBy1e: n)
       if r != 0 {
         let half: UInt128 = unsafe ._exp10[unchecked: n] &>> 1
-        if Self._roundsAway(
+        let nextAway = Self._roundsAway(
           isSignMinus: isSignMinus,
           significand: q,
           digit: r >= half ? 5 : 0,
           sticky: r != half,
-          rule
-        ) {
-          if q == ._1e34 &- 1 {
-            q = ._1e33
-            e &+= 1
-          } else {
-            q &+= 1
-          }
+          rule)
+        q &+= nextAway ? 1 : 0
+        if q == ._1e34 {
+          q = ._1e33
+          e &+= 1
         }
         _signal(.inexact, into: &flags)
       }
