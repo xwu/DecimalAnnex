@@ -1138,7 +1138,6 @@ extension Decimal128: LosslessStringConvertible {
       var significand_: UInt64 = 0
 
       let anchor = index
-      consumeDigits(into: &significand_, limit: 19, fraction: false)
       while index != count, let d = digit(unsafe utf8[unchecked: index]) {
         index &+= 1
         if digitCount == 0 && d == 0 { continue }
@@ -1149,7 +1148,6 @@ extension Decimal128: LosslessStringConvertible {
       if index != count, unsafe utf8[unchecked: index] == 46 /* '.' */ {
         index &+= 1
         let anchor = index
-        consumeDigits(into: &significand_, limit: 19, fraction: true)
         while index != count, let d = digit(unsafe utf8[unchecked: index]) {
           index &+= 1
           // Decrement exponent if a fractional digit.
