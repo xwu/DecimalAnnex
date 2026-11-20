@@ -830,71 +830,66 @@ extension UInt64 {
 @available(anyAppleOS 26.0, *)
 extension Decimal128: CustomStringConvertible {
   @inlinable
-  internal func _description(_ output: inout OutputSpan<UInt8>) {
-    precondition(isFinite && output.freeCapacity >= 42)
+  internal func _description(_ buffer: inout MutableRawSpan) -> Range<Int> {
+    precondition(isFinite && buffer.byteCount >= 46)
+    // The longest description requires only 42 bytes,
+    // but we reserve six bytes before the significand for prefix '-0.000'
+    // and we reserve six bytes after it for the exponent (e.g., 'e+6144').
+    //
+    // It is the caller's responsibility to prefill the first 46 bytes of
+    // `buffer` with ASCII '0'.
+    assert((0..<46).allSatisfy { offset in buffer[offset] == 48 /* '0' */ })
 
-    if _isSignMinus {
-      output.append(45 /* '-' */)
-    }
     let g = _combinationBitPattern
     var c = bitPattern & (1 &<< 113 &- 1)
     // Noncanonical zero (cf. `_canonical`).
     if g >= 0x18000 || c >= ._1e34 { c = 0 }
 
-    var scratch = [34 of UInt8](repeating: 48 /* '0' */)
-    var span_ = scratch.mutableSpan
-    var span = span_.mutableBytes
+    var endOffset = 40
     var startOffset: Int
     if c <= 0xFFFF_FFFF_FFFF_FFFF /* UInt64.max */ {
-      startOffset = unsafe UInt64(truncatingIfNeeded: c)._ascii(&span)
+      startOffset = unsafe UInt64(truncatingIfNeeded: c)
+        ._ascii(&buffer, uncheckedEndOffset: endOffset)
     } else {
       let (q, r) = c._quotientAndRemainder(dividingBy1e: 19)
-      unsafe UInt64(truncatingIfNeeded: r)._ascii(&span)
-      startOffset =
-        unsafe UInt64(truncatingIfNeeded: q)
-          ._ascii(&span, uncheckedEndOffset: 15)
+      unsafe UInt64(truncatingIfNeeded: r)
+        ._ascii(&buffer, uncheckedEndOffset: endOffset)
+      startOffset = unsafe UInt64(truncatingIfNeeded: q)
+        ._ascii(&buffer, uncheckedEndOffset: endOffset &- 19)
     }
-    let count = 34 &- startOffset
+    let count = endOffset &- startOffset
     let quantumExponent = Int(exponentBitPattern) &- 6176
     let exponent = quantumExponent &+ count &- 1
+    let separatorOffset: Int?
     if quantumExponent <= 0 && exponent >= 0 && exponent < 16 {
-      let unitOffset = quantumExponent &+ 33
-      for i in startOffset...unitOffset {
-        unsafe output.append(span[unchecked: i])
-      }
-      if unitOffset != 33 {
-        output.append(46 /* '.' */)
-        for i in (unitOffset &+ 1)..<34 {
-          unsafe output.append(span[unchecked: i])
-        }
-      }
-      return
+      separatorOffset = quantumExponent == 0 ? nil : startOffset &+ exponent
+    } else if exponent >= -4 && exponent < 0 {
+      startOffset &+= exponent &- 1
+      unsafe buffer[unchecked: startOffset &+ 1] = 46 /* '.' */
+      separatorOffset = nil
+    } else {
+      // Scientific notation.
+      separatorOffset = count == 1 ? nil : startOffset
+      unsafe buffer[unchecked: endOffset] = 101 /* 'e' */
+      unsafe buffer[unchecked: endOffset &+ 1] =
+        exponent < 0 ? 45 /* '-' */ : 43 /* '+' */
+      let x = UInt64(exponent.magnitude)
+      endOffset &+=
+        3 &+ (x >= 10 ? 1 : 0) &+ (x >= 100 ? 1 : 0) &+ (x >= 1000 ? 1 : 0)
+      unsafe x._ascii(&buffer, uncheckedEndOffset: endOffset)
     }
-    if exponent >= -4 && exponent < 0 {
-      output.append(48 /* '0' */)
-      output.append(46 /* '.' */)
-      output.append(repeating: 48, count: -exponent &- 1)
-      for i in startOffset..<34 {
-        unsafe output.append(span[unchecked: i])
+    if let separatorOffset {
+      for i in startOffset...separatorOffset {
+        unsafe buffer[unchecked: i &- 1] = buffer[unchecked: i]
       }
-      return
+      startOffset &-= 1
+      unsafe buffer[unchecked: separatorOffset] = 46 /* '.' */
     }
-    // Scientific notation.
-    unsafe output.append(span[unchecked: startOffset])
-    if count != 1 {
-      output.append(46 /* '.' */)
-      for i in (startOffset &+ 1)..<34 {
-        unsafe output.append(span[unchecked: i])
-      }
+    if _isSignMinus {
+      startOffset &-= 1
+      unsafe buffer[unchecked: startOffset] = 45 /* '-' */
     }
-    output.append(101 /* 'e' */)
-    output.append(exponent < 0 ? 45 /* '-' */ : 43 /* '+' */)
-    // Reuse the same scratch.
-    startOffset =
-      unsafe UInt64(exponent.magnitude)._ascii(&span, uncheckedEndOffset: 34)
-    for i in startOffset..<34 {
-      unsafe output.append(span[unchecked: i])
-    }
+    return startOffset..<endOffset
   }
 
   /// A textual representation of this value.
@@ -915,11 +910,15 @@ extension Decimal128: CustomStringConvertible {
     if magnitude.bitPattern == Self().bitPattern {
       return _isSignMinus ? "-0" : "0"
     }
-    return withTemporaryAllocation(of: UInt8.self, capacity: 42) { output in
-      _description(&output)
-      let utf8 = unsafe UTF8Span(unchecked: output.span, isKnownASCII: true)
-      return String(copying: utf8)
-    }
+    var scratch = [46 of UInt8](repeating: 48 /* '0' */)
+    var buffer_ = scratch.mutableSpan
+    var buffer = buffer_.mutableBytes
+    let range = _description(&buffer)
+    _ = consume buffer
+    let utf8 = unsafe UTF8Span(
+      unchecked: buffer_.span.extracting(range),
+      isKnownASCII: true)
+    return String(copying: utf8)
   }
 }
 
