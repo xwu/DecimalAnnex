@@ -1084,6 +1084,52 @@ extension Decimal128: LosslessStringConvertible {
     var biasedExponent = 6176
 
     @inline(always)
+    func read() -> UInt32? {
+      guard count &- index >= 4 else { return nil }
+      let tetrad = unsafe utf8.bytes.unsafeLoadUnaligned(
+        fromUncheckedByteOffset: index,
+        as: UInt32.self)
+      // Little endian only by policy.
+      assert(tetrad == UInt32(littleEndian: tetrad))
+      // Ensure all bytes of the tetrad are contained in '0'...'9'.
+      guard
+        ((tetrad &+ 0x4646_4646) | (tetrad &- 0x3030_3030)) & 0x8080_8080 == 0
+      else { return nil }
+      index &+= 4
+      return tetrad
+    }
+
+    @inline(always)
+    func consumeDigits(into chunk: inout UInt64, limit: Int, fraction: Bool) {
+      while digitCount <= limit &- 4, let tetrad = read() {
+        // Obtain all four digits represented by `tetrad` at once.
+        // If the digits represented by `tetrad` are "1234", then:
+        //
+        //     x = 0x04_03_02_01
+        //            |  |  |  |
+        //            d  c  b  a
+        let x = tetrad &- 0x3030_3030 /* '0000' */
+        // Compute `ab = 10 * a + b` and `cd = 10 * c + d` in bytes 0 and 2.
+        //
+        //     y = 0x00_22_00_0c
+        let y = ((x &* 0x0a01) &>> 8) & 0x00ff_00ff
+        // Compute `digits = 100 * ab + cd`.
+        let digits = UInt64((y &* 0x0064_0001) &>> 16)
+        chunk = chunk &* 10000 &+ digits
+        if digitCount != 0 {
+          digitCount &+= 4
+        } else if digits != 0 {
+          // Ignore initial leading zeros.
+          digitCount = digits >= 100
+            ? digits >= 1000 ? 4 : 3
+            : digits >=   10 ? 2 : 1
+        }
+        // Decrement exponent for each fractional digit.
+        if fraction { biasedExponent &-= 4 }
+      }
+    }
+
+    @inline(always)
     func digit(_ codeUnit: UInt8) -> UInt8? {
       let digit = codeUnit &- 48 /* '0' */
       return digit < 10 ? digit : nil
@@ -1093,6 +1139,7 @@ extension Decimal128: LosslessStringConvertible {
       var significand_: UInt64 = 0
 
       let anchor = index
+      consumeDigits(into: &significand_, limit: 19, fraction: false)
       while index != count, let d = digit(unsafe utf8[unchecked: index]) {
         index &+= 1
         if digitCount == 0 && d == 0 { continue }
@@ -1103,6 +1150,7 @@ extension Decimal128: LosslessStringConvertible {
       if index != count, unsafe utf8[unchecked: index] == 46 /* '.' */ {
         index &+= 1
         let anchor = index
+        consumeDigits(into: &significand_, limit: 19, fraction: true)
         while index != count, let d = digit(unsafe utf8[unchecked: index]) {
           index &+= 1
           // Decrement exponent if a fractional digit.
@@ -1134,12 +1182,14 @@ extension Decimal128: LosslessStringConvertible {
 
       let anchor = index
       integer: do {
+        consumeDigits(into: &leading, limit: 19, fraction: false)
         while digitCount < 19 {
           guard index != count, let d = digit(unsafe utf8[unchecked: index])
           else { break integer }
           consume(d, into: &leading, fraction: false)
           index &+= 1
         }
+        consumeDigits(into: &trailing, limit: 34, fraction: false)
         while digitCount < 34 {
           guard index != count, let d = digit(unsafe utf8[unchecked: index])
           else { break integer }
@@ -1154,6 +1204,9 @@ extension Decimal128: LosslessStringConvertible {
           index &+= 1
         }
         let anchor = index
+        while let tetrad = read() {
+          if tetrad != 0x3030_3030 /* '0000' */ { sticky = true }
+        }
         while index != count, let d = digit(unsafe utf8[unchecked: index]) {
           if d != 0 { sticky = true }
           index &+= 1
@@ -1165,12 +1218,14 @@ extension Decimal128: LosslessStringConvertible {
         index &+= 1
         let anchor = index
         fractional: do {
+          consumeDigits(into: &leading, limit: 19, fraction: true)
           while digitCount < 19 {
             guard index != count, let d = digit(unsafe utf8[unchecked: index])
             else { break fractional }
             consume(d, into: &leading, fraction: true)
             index &+= 1
           }
+          consumeDigits(into: &trailing, limit: 34, fraction: true)
           while digitCount < 34 {
             guard index != count, let d = digit(unsafe utf8[unchecked: index])
             else { break fractional }
@@ -1182,6 +1237,9 @@ extension Decimal128: LosslessStringConvertible {
             else { break fractional }
             next = d
             index &+= 1
+          }
+          while let tetrad = read() {
+            if tetrad != 0x3030_3030 /* '0000' */ { sticky = true }
           }
           while index != count, let d = digit(unsafe utf8[unchecked: index]) {
             if d != 0 { sticky = true }
