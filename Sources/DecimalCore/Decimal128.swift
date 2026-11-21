@@ -470,18 +470,10 @@ extension Decimal128: Hashable {
     var e = exponentBitPattern
     guard e != 0 else { return self }
     var c = significandBitPattern
-    // Estimate log10(c). See `UInt128._commonLogarithm` for more explanation.
-    // It is important that this estimate be at least the true floor log10 and
-    // at most one greater.
-    let estimate = ((19 &* (127 &- (c|1).leadingZeroBitCount)) &>> 6) &+ 1
-    let n = min(e, UInt(max(0, 33 &- estimate)))
+    let n = min(e, UInt(max(0, 33 &- c._commonLogarithm)))
     if n != 0 {
       c &*= unsafe ._exp10[unchecked: Int(n)]
       e &-= n
-    }
-    if e != 0 && c < ._1e33 {
-      c &*= 10
-      e &-= 1
     }
     return Self(sign: sign, exponentBitPattern: e, significandBitPattern: c)
   }

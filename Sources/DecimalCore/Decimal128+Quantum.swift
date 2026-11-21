@@ -93,28 +93,35 @@ extension Decimal128 {
       }
       c &*= unsafe ._exp10[unchecked: n]
     } else {
-      let digit: UInt128
-      let sticky: Bool
+      let r: UInt128
+      let half: UInt128
       if n < -34 {
-        (c, digit) = (0, 0)
-        sticky = true
+        r = c
+        half = ._1e34
+        c = 0
       } else {
-        let (q, r) = c._quotientAndRemainder(dividingBy1e: -n &- 1)
-        (c, digit) = q.quotientAndRemainder(dividingBy: 10)
-        sticky = r != 0
+        (c, r) = c._quotientAndRemainder(dividingBy1e: -n)
+        half = unsafe ._exp10[unchecked: -n] &>> 1
       }
-      let digit_ = UInt8(digit)
-      if Self._roundsAway(
-        isSignMinus: _isSignMinus,
-        significand: c,
-        digit: digit_,
-        sticky: sticky,
-        rule
-      ) {
-        c &+= 1
+      if r != 0 {
+        switch rule {
+        case .toNearestOrEven:
+          c &+= r &+ (c & 1) > half ? 1 : 0
+        case .toNearestOrAwayFromZero:
+          c &+= r >= half ? 1 : 0
+        case .towardZero:
+          break
+        case .awayFromZero:
+          c &+= 1
+        case .down:
+          c &+= _isSignMinus ? 1 : 0
+        case .up:
+          c &+= _isSignMinus ? 0 : 1
+        @unknown default:
+          fatalError("Unknown rounding rule.")
+        }
+        _signal(.inexact, into: &flags)
       }
-      assert(c < ._1e34) // `c` has been divided by at least 10.
-      if digit_ != 0 || sticky { _signal(.inexact, into: &flags) }
     }
     return Self(sign: sign, exponentBitPattern: oe, significandBitPattern: c)
   }

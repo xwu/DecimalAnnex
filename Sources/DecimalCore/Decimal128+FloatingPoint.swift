@@ -30,20 +30,10 @@ extension Decimal128: FloatingPoint {
 
     var e = exponentBitPattern
     var c = significandBitPattern
-    if e != 0 {
-      // Estimate log10(c). See `UInt128._commonLogarithm` for more explanation.
-      // It is important that this estimate be at least the true floor log10 and
-      // at most one greater.
-      let estimate = ((19 &* (127 &- (c|1).leadingZeroBitCount)) &>> 6) &+ 1
-      let n = min(e, UInt(max(0, 33 &- estimate)))
-      if n != 0 {
-        c &*= unsafe ._exp10[unchecked: Int(n)]
-        e &-= n
-      }
-      if e != 0 && c < ._1e33 {
-        c &*= 10
-        e &-= 1
-      }
+    if e != 0 && c < ._1e33 {
+      let n = min(e, UInt(truncatingIfNeeded: 33 &- c._commonLogarithm))
+      c &*= unsafe ._exp10[unchecked: Int(n)]
+      e &-= n
     }
     if _isSignMinus {
       if e != 0 && c == ._1e33 {
@@ -164,31 +154,38 @@ extension Decimal128: FloatingPoint {
     var c = significand.significandBitPattern
 
     if e < 0 {
-      let digit: UInt8
-      let sticky: Bool
+      let r: UInt128
+      let half: UInt128
       if e < -34 {
+        r = c
+        half = ._1e34
         c = 0
-        digit = 0
-        sticky = true
       } else {
-        let n = -e
-        let r: UInt128
-        (c, r) = c._quotientAndRemainder(dividingBy1e: n)
-        let half: UInt128 = unsafe ._exp10[unchecked: n] &>> 1
-        digit = r >= half ? 5 : 0
-        sticky = r != 0 && r != half
+        (c, r) = c._quotientAndRemainder(dividingBy1e: -e)
+        half = unsafe ._exp10[unchecked: -e] &>> 1
       }
-      if Self._roundsAway(
-        isSignMinus: isSignMinus,
-        significand: c,
-        digit: digit,
-        sticky: sticky,
-        rule
-      ) {
-        c &+= 1
+      if r != 0 {
+        let nextAway: Bool =
+          switch rule {
+          case .toNearestOrEven:
+            r &+ (c & 1) > half
+          case .toNearestOrAwayFromZero:
+            r >= half
+          case .towardZero:
+            false
+          case .awayFromZero:
+            true
+          case .down:
+            isSignMinus
+          case .up:
+            !isSignMinus
+          @unknown default:
+            fatalError("Unknown rounding rule.")
+          }
+        c &+= nextAway ? 1 : 0
+        // Every such inexact result is tiny before rounding.
+        _signal(.underflowInexact, into: &flags)
       }
-      // Every such inexact result is tiny before rounding.
-      if digit != 0 || sticky { _signal(.underflowInexact, into: &flags) }
       e = 0
     } else if e > 12287 {
       if c >= ._1e33 {
@@ -604,52 +601,50 @@ extension Decimal128: FloatingPoint {
     }
 
     let logcz = cz._commonLogarithm
-    var n: Int
-    var divisor: UInt128 = 0
-    if cxy.high == 0 {
-      n = cxy.low._commonLogarithm &- 33
-      if n > 0 {
+    if ez &+ logcz < exy && (cxy.high != 0 || cxy.low >= ._1e34) {
+      // Normalize the product while obtaining its remainder.
+      var n: Int
+      var divisor: UInt128
+      var quo: UInt128
+      var rem: UInt128
+      if cxy.high == 0 {
+        n = cxy.low._commonLogarithm &- 33
         divisor = unsafe ._exp10[unchecked: n]
+        (quo, rem) = cxy.low._quotientAndRemainder(dividingBy1e: n)
+      } else {
+        // See explanatory comment in `UInt128._commonLogarithm`.
+        // Note that here we underestimate using a closer approximation.
+        n = ((1233 &* (255 &- cxy.high.leadingZeroBitCount)) &>> 12) &- 33
+        divisor = unsafe ._exp10[unchecked: n]
+        (quo, rem) =
+          UInt128._quotientAndRemainder(fullWidth: cxy, dividingBy1e: n)
+        if quo >= ._1e34 {
+          let digit: UInt128
+          (quo, digit) = quo.quotientAndRemainder(dividingBy: 10)
+          rem &+= digit &* divisor
+          divisor &*= 10
+          n &+= 1
+        }
       }
-    } else {
-      // See explanatory comment in `UInt128._commonLogarithm`.
-      // Note that here we underestimate.
-      n = ((77 &* (255 &- cxy.high.leadingZeroBitCount)) &>> 8) &- 33
-      divisor = unsafe UInt128._exp10[unchecked: n]
-      if cxy >= divisor._multipliedFullWidth(by: ._1e34) {
-        n &+= 1
-        divisor &*= 10
-      }
-    }
-    if n > 0 && ez &+ logcz < exy {
-      // Inexact.
-      var (quo, rem) = cxy.high == 0
-        ? cxy.low._quotientAndRemainder(dividingBy1e: n)
-        : UInt128._quotientAndRemainder(fullWidth: cxy, dividingBy1e: n)
       e = exy &+ n
       if rem != 0 || sameSign {
-        let nextAway: Bool =
-          switch rule {
-          case .toNearestOrEven, .toNearestOrAwayFromZero:
-            sameSign ? rem >= (divisor &>> 1) : rem > (divisor &>> 1)
-          case .towardZero:
-            false
-          case .awayFromZero:
-            true
-          case .down:
-            sxy
-          case .up:
-            !sxy
-          @unknown default:
-            fatalError("Unknown rounding rule.")
-          }
-        if nextAway {
-          if quo == ._1e34 &- 1 {
-            quo = ._1e33
-            e &+= 1
-          } else {
-            quo &+= 1
-          }
+        switch rule {
+        case .toNearestOrEven, .toNearestOrAwayFromZero:
+          quo &+= rem &+ (sameSign ? 1 : 0) > (divisor &>> 1) ? 1 : 0
+        case .towardZero:
+          break
+        case .awayFromZero:
+          quo &+= 1
+        case .down:
+          quo &+= sxy ? 1 : 0
+        case .up:
+          quo &+= sxy ? 0 : 1
+        @unknown default:
+          fatalError("Unknown rounding rule.")
+        }
+        if quo == ._1e34 {
+          quo = ._1e33
+          e &+= 1
         }
       } else {
         let nextToward: Bool =
@@ -688,6 +683,19 @@ extension Decimal128: FloatingPoint {
       return sxy ? -abs : abs
     }
 
+    var n: Int
+    var divisor: UInt128 = 0
+    if cxy.high == 0 {
+      n = cxy.low._commonLogarithm &- 33
+    } else {
+      // See explanatory comment in `UInt128._commonLogarithm`.
+      // Note that here we underestimate.
+      n = ((77 &* (255 &- cxy.high.leadingZeroBitCount)) &>> 8) &- 33
+      divisor = unsafe UInt128._exp10[unchecked: n]
+      if cxy >= divisor._multipliedFullWidth(by: ._1e34) {
+        n &+= 1
+      }
+    }
     let delta = ez &+ logcz &- (exy &+ n &+ 33)
     if (sameSign ? delta >= 0 : delta >= 2) && ez &+ logcz >= 34 {
       let n_ = n &+ delta
@@ -739,34 +747,29 @@ extension Decimal128: FloatingPoint {
         }
         if r != 0 || sticky {
           let half = divisor &>> 1
-          let nextAway: Bool =
-            switch rule {
-            case .toNearestOrEven:
-              r > half || (r == half && (sticky || (q & 1) != 0))
-            case .toNearestOrAwayFromZero:
-              r >= half
-            case .towardZero:
-              false
-            case .awayFromZero:
-              true
-            case .down:
-              isSignMinus
-            case .up:
-              !isSignMinus
-            @unknown default:
-              fatalError("Unknown rounding rule.")
+          switch rule {
+          case .toNearestOrEven:
+            q &+= r &+ (sticky || (q & 1) != 0 ? 1 : 0) > half ? 1 : 0
+          case .toNearestOrAwayFromZero:
+            q &+= r >= half ? 1 : 0
+          case .towardZero:
+            break
+          case .awayFromZero:
+            q &+= 1
+          case .down:
+            q &+= isSignMinus ? 1 : 0
+          case .up:
+            q &+= isSignMinus ? 0 : 1
+          @unknown default:
+            fatalError("Unknown rounding rule.")
+          }
+          if q == ._1e34 {
+            if e == 12287 {
+              _signal(.overflowInexact, into: &flags)
+              return isSignMinus ? -.infinity : .infinity
             }
-          if nextAway {
-            if q == ._1e34 &- 1 {
-              if e == 12287 {
-                _signal(.overflowInexact, into: &flags)
-                return isSignMinus ? -.infinity : .infinity
-              }
-              q = ._1e33
-              e &+= 1
-            } else {
-              q &+= 1
-            }
+            q = ._1e33
+            e &+= 1
           }
           _signal(.inexact, into: &flags)
         }
@@ -1217,7 +1220,12 @@ extension Decimal128: FloatingPoint {
       (quo, rem) = UInt128._quotientAndRemainder(
         fullWidth: lc._multipliedFullWidth(by1e: n), dividingBy: rc)
     } else {
-      let delta = rc._commonLogarithm &- lc._commonLogarithm
+      // See explanatory comment in `UInt128._commonLogarithm`.
+      // Note that here we use a closer approximation.
+      let x = lc.leadingZeroBitCount &- rc.leadingZeroBitCount
+      let delta = (1233 &* (x &+ 1)) &>> 12
+      // Even though we underestimate `log10(2)`,
+      // `delta` may overestimate `floor(log10(rc/lc))`.
       n = unsafe 33 &+ delta &+ (lc &* ._exp10[unchecked: delta] < rc ? 1 : 0)
       let dividend = n <= 38
         ? lc._multipliedFullWidth(by1e: n)
@@ -1253,39 +1261,52 @@ extension Decimal128: FloatingPoint {
     }
     if e >= 0 {
       let rr = rem &<< 1 // `rem * 2`.
-      if Self._roundsAway(
-        isSignMinus: isSignMinus,
-        significand: quo,
-        digit: rr >= rc ? 5 : 0,
-        // A proxy guard digit (5 if midpoint or above; else 0).
-        sticky: rr != rc,
-        rule
-      ) {
-        assert(quo != ._1e34 &- 1)
-        quo &+= 1
-      }
+      let nextAway: Bool =
+        switch rule {
+        case .toNearestOrEven:
+          rr &+ (quo & 1) > rc
+        case .toNearestOrAwayFromZero:
+          rr >= rc
+        case .towardZero:
+          false
+        case .awayFromZero:
+          true
+        case .down:
+          isSignMinus
+        case .up:
+          !isSignMinus
+        @unknown default:
+          fatalError("Unknown rounding rule.")
+        }
+      quo &+= nextAway ? 1 : 0
       _signal(.inexact, into: &flags)
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | quo)
       return isSignMinus ? -abs : abs
     }
     // Inexact underflow.
-    let digit: UInt8 // A proxy guard digit (5 if midpoint or above; else 0).
+    let nearestAway: Bool
     if e < -34 {
       quo = 0
-      digit = 0
+      nearestAway = false
     } else {
       let r: UInt128
       (quo, r) = quo._quotientAndRemainder(dividingBy1e: -e)
-      digit = unsafe r >= (._exp10[unchecked: -e] &>> 1) ? 5 : 0
+      // The sticky bit is always set, so there are no ties.
+      nearestAway = unsafe r >= (._exp10[unchecked: -e] &>> 1)
     }
-    if Self._roundsAway(
-      isSignMinus: isSignMinus,
-      significand: quo,
-      digit: digit,
-      sticky: true,
-      rule
-    ) {
+    switch rule {
+    case .toNearestOrEven, .toNearestOrAwayFromZero:
+      quo &+= nearestAway ? 1 : 0
+    case .towardZero:
+      break
+    case .awayFromZero:
       quo &+= 1
+    case .down:
+      quo &+= isSignMinus ? 1 : 0
+    case .up:
+      quo &+= isSignMinus ? 0 : 1
+    @unknown default:
+      fatalError("Unknown rounding rule.")
     }
     _signal(.underflowInexact, into: &flags)
     let abs = Self(bitPattern: quo)
@@ -1486,10 +1507,9 @@ extension Decimal128: FloatingPoint {
       (quo, residue) = cx._quotientAndRemainder(dividingBy1e: n)
       if !truncating {
         let complement = unsafe ._exp10[unchecked: n] &- residue
-        if residue > complement || (residue == complement && (quo & 1) != 0) {
-          residue = complement
-          isSignMinus.toggle()
-        }
+        let adjust = residue &+ (quo & 1) > complement
+        residue = adjust ? complement : residue
+        isSignMinus = isSignMinus != adjust
       }
       if shift > 0 {
         // Adjust significand for the preferred exponent.
@@ -1521,10 +1541,9 @@ extension Decimal128: FloatingPoint {
           }
           // `(quo, residue) = cx.quotientAndRemainder(dividingBy: lo)`
           let complement = lo &- residue
-          if residue > complement || (residue == complement && (quo & 1) != 0) {
-            residue = complement
-            isSignMinus.toggle()
-          }
+          let adjust = residue &+ (quo & 1) > complement
+          residue = adjust ? complement : residue
+          isSignMinus = isSignMinus != adjust
         }
       }
     } else {
@@ -1548,8 +1567,8 @@ extension Decimal128: FloatingPoint {
         // which depends on whether `cx_ * (10 ** last)` would fit in `UInt128`.
         //
         // See explanatory comment in `UInt128._commonLogarithm`.
-        // Note that here we underestimate.
-        let estimate = (77 &* cx_.leadingZeroBitCount) &>> 8
+        // Note that here we underestimate using a closer approximation.
+        let estimate = (1233 &* cx_.leadingZeroBitCount) &>> 12
         if last <= estimate {
           cx_ = unsafe cx_ &* ._exp10[unchecked: last]
           shift &-= last
@@ -1572,10 +1591,9 @@ extension Decimal128: FloatingPoint {
         if !truncating {
           let complement = cy &- residue
           // A stale quotient is harmless when `residue == 0`.
-          if residue > complement || (residue == complement && (quo & 1) != 0) {
-            residue = complement
-            isSignMinus.toggle()
-          }
+          let adjust = residue &+ (quo & 1) > complement
+          residue = adjust ? complement : residue
+          isSignMinus = isSignMinus != adjust
         }
       } else {
         // Use modular exponentiation for a large exponent gap.
@@ -2124,24 +2142,22 @@ extension Decimal128: FloatingPoint {
       half = ._1e34
     }
     if r != 0 {
-      let nextAway: Bool =
-        switch rule {
-        case .toNearestOrEven:
-          r &+ (q & 1) > half
-        case .toNearestOrAwayFromZero:
-          r >= half
-        case .towardZero:
-          false
-        case .awayFromZero:
-          true
-        case .down:
-          isSignMinus
-        case .up:
-          !isSignMinus
-        @unknown default:
-          fatalError("Unknown rounding rule.")
-        }
-      q &+= nextAway ? 1 : 0
+      switch rule {
+      case .toNearestOrEven:
+        q &+= r &+ (q & 1) > half ? 1 : 0
+      case .toNearestOrAwayFromZero:
+        q &+= r >= half ? 1 : 0
+      case .towardZero:
+        break
+      case .awayFromZero:
+        q &+= 1
+      case .down:
+        q &+= isSignMinus ? 1 : 0
+      case .up:
+        q &+= isSignMinus ? 0 : 1
+      @unknown default:
+        fatalError("Unknown rounding rule.")
+      }
       _signal(.inexact, into: &flags)
     }
     let abs = Self(bitPattern: 6176 &<< 113 | q)

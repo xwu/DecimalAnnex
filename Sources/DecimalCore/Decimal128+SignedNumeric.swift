@@ -116,16 +116,9 @@ extension Decimal128 {
         e = pe &- delta
       }
     } else if e > pe {
-      let estimate = ((19 &* (127 &- quo.leadingZeroBitCount)) &>> 6) &+ 1
-      let n = min(e &- pe, max(0, 33 &- estimate))
-      if n > 0 {
-        quo &*= unsafe ._exp10[unchecked: n]
-        e &-= n
-      }
-      if e > pe && quo < ._1e33 {
-        quo &*= 10
-        e &-= 1
-      }
+      let n = min(e &- pe, max(0, 33 &- quo._commonLogarithm))
+      quo &*= unsafe ._exp10[unchecked: n]
+      e &-= n
     }
   }
 
@@ -230,10 +223,10 @@ extension Decimal128 {
       }
     } else if hi != 0 || lo >= ._1e34 {
       // See explanatory comment in `UInt128._commonLogarithm`.
-      // Note that here we underestimate.
+      // Note that here we underestimate using a closer approximation.
       let x = hi != 0
-        ? 255 &- (hi|1).leadingZeroBitCount
-        : 127 &- (lo|1).leadingZeroBitCount
+        ? 255 &- hi.leadingZeroBitCount
+        : 127 &- lo.leadingZeroBitCount
       let n = ((1233 &* x) &>> 12) &- 33
       divisor = unsafe ._exp10[unchecked: n]
       (quo, rem) = hi != 0
@@ -361,19 +354,9 @@ extension Decimal128: AdditiveArithmetic {
       let e2 = rhs.exponentBitPattern
       guard e1 > e2 else { return lhs }
       var c1 = lhs.significandBitPattern
-      // Estimate log10(c). See `UInt128._commonLogarithm` for more explanation.
-      // It is important that this estimate be at least the true floor log10 and
-      // at most one greater.
-      let estimate = ((19 &* (127 &- (c1|1).leadingZeroBitCount)) &>> 6) &+ 1
-      let n = min(e1 &- e2, UInt(max(0, 33 &- estimate)))
-      if n > 0 {
-        c1 &*= unsafe ._exp10[unchecked: Int(n)]
-        e1 &-= n
-      }
-      if e1 > e2 && c1 < ._1e33 {
-        c1 &*= 10
-        e1 &-= 1
-      }
+      let n = min(e1 &- e2, UInt(max(0, 33 &- c1._commonLogarithm)))
+      c1 &*= unsafe ._exp10[unchecked: Int(n)]
+      e1 &-= n
       return Self(
         sign: lhs.sign, exponentBitPattern: e1, significandBitPattern: c1)
     }
@@ -394,14 +377,21 @@ extension Decimal128: AdditiveArithmetic {
           (c1, r) = c1.quotientAndRemainder(dividingBy: 10)
           e1 &+= 1
           if r != 0 {
-            if Self._roundsAway(
-              isSignMinus: isSignMinus,
-              significand: c1,
-              digit: UInt8(r),
-              sticky: false,
-              rule
-            ) {
+            switch rule {
+            case .toNearestOrEven:
+              c1 &+= r &+ (c1 & 1) > 5 ? 1 : 0
+            case .toNearestOrAwayFromZero:
+              c1 &+= r >= 5 ? 1 : 0
+            case .towardZero:
+              break
+            case .awayFromZero:
               c1 &+= 1
+            case .down:
+              c1 &+= isSignMinus ? 1 : 0
+            case .up:
+              c1 &+= isSignMinus ? 0 : 1
+            @unknown default:
+              fatalError("Unknown rounding rule.")
             }
             _signal(.inexact, into: &flags)
           }
@@ -473,34 +463,29 @@ extension Decimal128: AdditiveArithmetic {
       }
       if r != 0 || sticky {
         let half = divisor &>> 1
-        let nextAway: Bool =
-          switch rule {
-          case .toNearestOrEven:
-            r > half || (r == half && (sticky || (q & 1) != 0))
-          case .toNearestOrAwayFromZero:
-            r >= half
-          case .towardZero:
-            false
-          case .awayFromZero:
-            true
-          case .down:
-            isSignMinus
-          case .up:
-            !isSignMinus
-          @unknown default:
-            fatalError("Unknown rounding rule.")
+        switch rule {
+        case .toNearestOrEven:
+          q &+= r &+ (sticky || (q & 1) != 0 ? 1 : 0) > half ? 1 : 0
+        case .toNearestOrAwayFromZero:
+          q &+= r >= half ? 1 : 0
+        case .towardZero:
+          break
+        case .awayFromZero:
+          q &+= 1
+        case .down:
+          q &+= isSignMinus ? 1 : 0
+        case .up:
+          q &+= isSignMinus ? 0 : 1
+        @unknown default:
+          fatalError("Unknown rounding rule.")
+        }
+        if q == ._1e34 {
+          if e == 12287 {
+            _signal(.overflowInexact, into: &flags)
+            return isSignMinus ? -.infinity : .infinity
           }
-        if nextAway {
-          if q == ._1e34 &- 1 {
-            if e == 12287 {
-              _signal(.overflowInexact, into: &flags)
-              return isSignMinus ? -.infinity : .infinity
-            }
-            q = ._1e33
-            e &+= 1
-          } else {
-            q &+= 1
-          }
+          q = ._1e33
+          e &+= 1
         }
         _signal(.inexact, into: &flags)
       }
