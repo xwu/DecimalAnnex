@@ -19,7 +19,7 @@ It conforms to the standard library `FloatingPoint` protocol, making it usable i
 The implementation is written in native Swift and has no dependency on Foundation.
 It has been tested (outside this repository) against published corpora, and it benchmarks favorably against reference implementations.
 
-| Operation<br>('everyday' operands)[^1] | DecimalAnnex<br>0.2.1 | Intel<br>2.0U5 | Boost<br>`21bb2ed` | Foundation<br>macOS 26.7 |
+| 'Everyday' operands<br>(ns/op)[^1]     | DecimalAnnex<br>0.2.1 | Intel<br>2.0U5 | Boost<br>`21bb2ed` | Foundation<br>macOS 26.7 |
 |:---------------------------------------|----------------------:|---------------:|-------------------:|-------------------------:|
 | Add                                    |               **6.3** |         11.9   |             16.1   |                    466.6 |
 | Subtract                               |               **6.4** |         14.1   |             16.3   |                    445.6 |
@@ -30,7 +30,7 @@ It has been tested (outside this repository) against published corpora, and it b
 | Convert text to decimal                |              **16.7** |         20.8   |             24.6   |                    545.3 |
 | Convert decimal to text[^2]            |                29.2   |       **10.1** |             24.0   |                   1654.3 |
 
-[^1]: Median ns/operation benchmarked on Apple M2 Pro using a generated harness.
+[^1]: Median result benchmarked on Apple M2 Pro using a generated harness.
       Mixture of 'everyday' operands included: signed values to two decimal places (50%), small-integer right-hand side (31.25%).
 [^2]: Conversion to text includes initialization of a `String` value for DecimalAnnex and Foundation only.
 
