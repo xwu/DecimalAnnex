@@ -572,30 +572,33 @@ extension Decimal128: FloatingPoint {
     var e: Int
     var c: (high: UInt128, low: UInt128)
     var sticky = false
-    if ez == exy {
-      e = pe
+    let n_ = ez &- exy
+    if n_ >= 0 && n_ <= 34 {
+      let cz_ = n_ == 0
+        ? (high: 0, low: cz)
+        : unsafe cz._multipliedFullWidth(by: ._exp10[unchecked: n_])
       if sameSign {
         let carry: Bool
-        (c.low, carry) = cxy.low.addingReportingOverflow(cz)
-        c.high = cxy.high &+ (carry ? 1 : 0)
+        (c.low, carry) = cxy.low.addingReportingOverflow(cz_.low)
+        c.high = cxy.high &+ cz_.high &+ (carry ? 1 : 0)
         isSignMinus = sxy
-      } else if cxy.high != 0 || cxy.low >= cz {
+      } else if cxy >= cz_ {
         let borrow: Bool
-        (c.low, borrow) = cxy.low.subtractingReportingOverflow(cz)
-        c.high = cxy.high &- (borrow ? 1 : 0)
+        (c.low, borrow) = cxy.low.subtractingReportingOverflow(cz_.low)
+        c.high = cxy.high &- cz_.high &- (borrow ? 1 : 0)
         isSignMinus = c == (0, 0)
           ? rule == .down // Exact zero. See IEEE 754 §6.3.
           : sxy
       } else {
-        c = (0, cz &- cxy.low)
+        let borrow: Bool
+        (c.low, borrow) = cz_.low.subtractingReportingOverflow(cxy.low)
+        c.high = cz_.high &- cxy.high &- (borrow ? 1 : 0)
         isSignMinus = z._isSignMinus
       }
       return ._pack(
         isSignMinus: isSignMinus,
-        biasedExponent: e,
+        biasedExponent: exy,
         significand: c,
-        sticky: sticky,
-        preferredBiasedExponent: pe,
         rule,
         &flags)
     }
