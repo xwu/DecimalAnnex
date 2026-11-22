@@ -19,20 +19,37 @@ It conforms to the standard library `FloatingPoint` protocol, making it usable i
 The implementation is written in native Swift and has no dependency on Foundation.
 It has been tested (outside this repository) against published corpora, and it benchmarks favorably against reference implementations.
 
-| 'Everyday' operands<br>(ns/op)[^1]     | DecimalAnnex<br>0.2.1 | Intel<br>2.0U5 | Boost<br>`21bb2ed` | Foundation<br>macOS 26.7 |
-|:---------------------------------------|----------------------:|---------------:|-------------------:|-------------------------:|
-| Add                                    |               **6.3** |         11.9   |             16.1   |                    466.6 |
-| Subtract                               |               **6.4** |         14.1   |             16.3   |                    445.6 |
-| Multiply                               |               **3.2** |         23.5   |              5.4   |                    358.8 |
-| Divide                                 |              **27.8** |         46.5   |             83.4   |                   1682.6 |
-| Fused multiply-add                     |              **17.8** |         38.3   |             40.1   |                        — |
-| Round to integer, ties to even         |               **3.9** |         11.0   |            **4.8** |                    540.8 |
-| Convert text to decimal                |              **16.7** |         20.8   |             24.6   |                    545.3 |
-| Convert decimal to text[^2]            |                29.2   |       **10.1** |             24.0   |                   1654.3 |
+| 'Everyday' operands<br>(ns/op)[^1] | DecimalAnnex<br>`a6c9786` | Intel<br>2.0U5 | Boost<br>`21bb2ed` | Foundation<br>macOS 26.7 |
+|:-----------------------------------|--------------------------:|---------------:|-------------------:|-------------------------:|
+| Add                                |                  **16.7** |           40.9 |             25.7   |                    657.4 |
+| Subtract                           |                  **17.4** |           42.6 |             26.2   |                    671.3 |
+| Multiply                           |                   **4.0** |           38.8 |              7.6   |                    472.6 |
+| Divide                             |                  **37.4** |           72.4 |            122.1   |                   1349.0 |
+| Fused multiply-add                 |                  **24.5** |           73.6 |             63.7   |                        — |
+| Square root                        |                    54.0   |          139.7 |           **49.6** |                        — |
+| IEEE remainder                     |                  **21.6** |           28.7 |             29.9   |                        — |
+| Round to integer, ties to even     |                   **6.3** |           27.1 |             18.4   |                    451.9 |
 
-[^1]: Median result benchmarked on Apple M2 Pro using a generated harness.
-      Mixture of 'everyday' operands included: signed values to two decimal places (50%), small-integer right-hand side (31.25%).
-[^2]: Conversion to text includes initialization of a `String` value for DecimalAnnex and Foundation only.
+| Wide operands<br>(ns/op)[^2]       | DecimalAnnex<br>`a6c9786` | Intel<br>2.0U5 | Boost<br>`21bb2ed` | Foundation<br>macOS 26.7 |
+|:-----------------------------------|--------------------------:|---------------:|-------------------:|-------------------------:|
+| Add                                |                  **27.7** |           51.3 |             39.5   |                   1004.9 |
+| Subtract                           |                  **28.1** |           52.4 |             40.1   |                   1009.1 |
+| Multiply                           |                  **24.8** |           82.4 |             33.1   |                   1388.4 |
+| Divide                             |                  **66.9** |           71.3 |            128.5   |                   1585.2 |
+| Fused multiply-add                 |                  **45.1** |          128.2 |             88.2   |                        — |
+| Square root                        |                  **55.3** |          143.2 |           **55.3** |                        — |
+| IEEE remainder                     |                  **43.7** |          286.6 |             54.8   |                        — |
+| Round to integer, ties to even     |                  **13.3** |           30.3 |             35.1   |                   1311.0 |
+
+[^1]: Each operand pool contains 65,536 signed values, with independently shuffled copies for the second and third operands.
+      (Square root uses the operand’s magnitude.)
+      Tables show median nanoseconds per operation (ns/op) on Apple M2 Pro sampled in full batches of 4,096 operations.
+      'Everyday' operands are sampled from: amounts in cents (50%), whole numbers (25%),
+      and fractions of magnitude less than one with two to eight decimal places (25%).
+[^2]: Wide operands have 17–34 significand digits.
+      In 7/8 of draws, the adjusted exponent is sampled uniformly from −6 through +16;
+      in 7/64, the adjusted exponent is sampled uniformly from −24 through +64; and
+      in 1/64, the quantum exponent is sampled uniformly from −6176 through +6111.
 
 ## Representation
 
