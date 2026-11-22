@@ -952,10 +952,9 @@ struct DecimalCoreTests {
     x = .infinity
     #expect((-x).quantized(by: x) == -x)
     #expect((-x).quantized(by: 1).isNaN)
-    var flags: DecimalFloatingPointStatusFlags = []
-    #expect((-x).quantum(&flags) == .infinity)
-    #expect(flags.isEmpty)
+    #expect((-x).quantum == .infinity)
 
+    var flags: DecimalFloatingPointStatusFlags = []
     x = Decimal128("-1e-100")!
     #expect(x.quantized(by: 1, rounding: .down, &flags).bitPattern
             == (-1 as Decimal128).bitPattern)
@@ -971,10 +970,8 @@ struct DecimalCoreTests {
     #expect(result.isNaN && !result.isSignalingNaN)
     #expect(flags == .invalid)
 
-    flags = []
-    let quantum = Decimal128.signalingNaN.quantum(&flags)
+    let quantum = Decimal128.signalingNaN.quantum
     #expect(quantum.isNaN && !quantum.isSignalingNaN)
-    #expect(flags == .invalid)
   }
 
   @Test

@@ -9,31 +9,12 @@ extension Decimal128 {
   ///
   /// This property implements the `quantum` operation defined by the IEEE 754
   /// specification. Unlike `BinaryFloatingPoint.binade`, the result of this
-  /// operation is always positive.
+  /// operation is always positive unless NaN.
   @inline(always)
   public var quantum: Decimal128 {
-    var flags: DecimalFloatingPointStatusFlags = []
-    defer { _signal(flags) }
-    return quantum(&flags)
-  }
-
-  /// Returns the quantum of this value, accumulating status flags.
-  ///
-  /// If `x` is finite, then the result is the floating-point value with
-  /// positive sign and the same represented exponent as this value, but with a
-  /// significand of 1.0.
-  /// If `x` is infinite, then the result is positive `infinity`.
-  ///
-  /// This method implements the `quantum` operation defined by the IEEE 754
-  /// specification. Unlike `BinaryFloatingPoint.binade`, the result of this
-  /// operation is always positive.
-  @inlinable
-  public func quantum(
-    _ flags: inout DecimalFloatingPointStatusFlags
-  ) -> Decimal128 {
     guard isFinite else {
       if isSignalingNaN {
-        _raise(.invalid, in: &flags)
+        _signal(.invalid)
         return _quiet._canonical
       }
       if isNaN {

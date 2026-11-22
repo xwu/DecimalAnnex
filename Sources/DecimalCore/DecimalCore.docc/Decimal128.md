@@ -178,7 +178,6 @@
 ### Working with Quantum
 
 - ``quantum``
-- ``quantum(_:)``
 - ``quantized(by:)``
 - ``quantized(by:_:)``
 - ``quantized(by:rounding:)``
