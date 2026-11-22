@@ -410,8 +410,7 @@ extension Decimal128 {
 
 #if !((os(macOS) || targetEnvironment(macCatalyst)) && arch(x86_64))
   /// Creates a new decimal floating-point value with the fewest significant
-  /// digits that converts back to the given binary floating-point value with
-  /// rounding to the nearest representable value (ties to even).
+  /// digits that converts back to the given binary floating-point value.
   ///
   /// The result need not equal `source` exactly. To obtain instead a decimal
   /// floating-point value that is the nearest possible representable value to
@@ -433,9 +432,8 @@ extension Decimal128 {
   }
 
   /// Creates a new decimal floating-point value with the fewest significant
-  /// digits that converts back to the given binary floating-point value with
-  /// rounding to the nearest representable value (ties to even), accumulating
-  /// status flags.
+  /// digits that converts back to the given binary floating-point value,
+  /// accumulating status flags.
   ///
   /// The result need not equal `source` exactly. To obtain instead a decimal
   /// floating-point value that is the nearest possible representable value to
@@ -461,8 +459,7 @@ extension Decimal128 {
 #endif
 
   /// Creates a new decimal floating-point value with the fewest significant
-  /// digits that converts back to the given binary floating-point value with
-  /// rounding to the nearest representable value (ties to even).
+  /// digits that converts back to the given binary floating-point value.
   ///
   /// The result need not equal `source` exactly. To obtain instead a decimal
   /// floating-point value that is the nearest possible representable value to
@@ -484,9 +481,8 @@ extension Decimal128 {
   }
 
   /// Creates a new decimal floating-point value with the fewest significant
-  /// digits that converts back to the given binary floating-point value with
-  /// rounding to the nearest representable value (ties to even), accumulating
-  /// status flags.
+  /// digits that converts back to the given binary floating-point value,
+  /// accumulating status flags.
   ///
   /// The result need not equal `source` exactly. To obtain instead a decimal
   /// floating-point value that is the nearest possible representable value to
@@ -511,8 +507,7 @@ extension Decimal128 {
   }
 
   /// Creates a new decimal floating-point value with the fewest significant
-  /// digits that converts back to the given binary floating-point value with
-  /// rounding to the nearest representable value (ties to even).
+  /// digits that converts back to the given binary floating-point value.
   ///
   /// The result need not equal `source` exactly. To obtain instead a decimal
   /// floating-point value that is the nearest possible representable value to
@@ -534,9 +529,8 @@ extension Decimal128 {
   }
 
   /// Creates a new decimal floating-point value with the fewest significant
-  /// digits that converts back to the given binary floating-point value with
-  /// rounding to the nearest representable value (ties to even), accumulating
-  /// status flags.
+  /// digits that converts back to the given binary floating-point value,
+  /// accumulating status flags.
   ///
   /// The result need not equal `source` exactly. To obtain instead a decimal
   /// floating-point value that is the nearest possible representable value to
