@@ -611,6 +611,9 @@ struct DecimalCoreTests {
       result: String,
       flags: DecimalFloatingPointStatusFlags)
     let cases: [Case] = [
+      // Did you leave off a load-bearing use of wrapping arithmetic or
+      // `.init(truncatingIfNeeded:)`?
+      ("6", .toNearestOrEven, "2.449489742783178098197284074705891", .inexact),
       ("1000000000000000063245553203367587e1", .towardZero, "100000000000000003.1622776601683793", .inexact),
       ("inf", .toNearestOrEven, "inf", []),
       ("snan", .toNearestOrEven, "nan", .invalid),
