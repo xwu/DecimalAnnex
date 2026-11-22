@@ -19,27 +19,27 @@ It conforms to the standard library `FloatingPoint` protocol, making it usable i
 The implementation is written in native Swift and has no dependency on Foundation.
 It has been tested (outside this repository) against published corpora, and it benchmarks favorably against reference implementations.
 
-| 'Everyday' operands<br>(ns/op)[^1] | DecimalAnnex<br>`a6c9786` | Intel<br>2.0U5 | Boost<br>`21bb2ed` | Foundation<br>macOS 26.7 |
-|:-----------------------------------|--------------------------:|---------------:|-------------------:|-------------------------:|
-| Add                                |                  **16.7** |           40.9 |             25.7   |                    657.4 |
-| Subtract                           |                  **17.4** |           42.6 |             26.2   |                    671.3 |
-| Multiply                           |                   **4.0** |           38.8 |              7.6   |                    472.6 |
-| Divide                             |                  **37.4** |           72.4 |            122.1   |                   1349.0 |
-| Fused multiply-add                 |                  **24.5** |           73.6 |             63.7   |                        — |
-| Square root                        |                    54.0   |          139.7 |           **49.6** |                        — |
-| IEEE remainder                     |                  **21.6** |           28.7 |             29.9   |                        — |
-| Round to integer, ties to even     |                   **6.3** |           27.1 |             18.4   |                    451.9 |
+| 'Everyday' operands<br>(ns/op)[^1] | DecimalAnnex<br>0.3.0 | Intel<br>2.0U5 | Boost<br>`21bb2ed` | Foundation<br>macOS 26.7 |
+|:-----------------------------------|----------------------:|---------------:|-------------------:|-------------------------:|
+| Add                                |              **12.0** |           28.8 |             18.5   |                    463.9 |
+| Subtract                           |              **12.3** |           29.8 |             18.7   |                    458.4 |
+| Multiply                           |               **2.8** |           26.9 |              5.4   |                    330.7 |
+| Divide                             |              **26.1** |           53.3 |             87.1   |                    959.8 |
+| Fused multiply-add                 |              **17.5** |           50.4 |             44.8   |                        — |
+| Square root                        |                37.0   |           96.2 |           **35.4** |                        — |
+| IEEE remainder                     |              **15.2** |           20.9 |             20.8   |                        — |
+| Round to integer, ties to even     |               **4.5** |           19.2 |             13.4   |                    315.1 |
 
-| Wide operands<br>(ns/op)[^2]       | DecimalAnnex<br>`a6c9786` | Intel<br>2.0U5 | Boost<br>`21bb2ed` | Foundation<br>macOS 26.7 |
-|:-----------------------------------|--------------------------:|---------------:|-------------------:|-------------------------:|
-| Add                                |                  **27.7** |           51.3 |             39.5   |                   1004.9 |
-| Subtract                           |                  **28.1** |           52.4 |             40.1   |                   1009.1 |
-| Multiply                           |                  **24.8** |           82.4 |             33.1   |                   1388.4 |
-| Divide                             |                  **66.9** |           71.3 |            128.5   |                   1585.2 |
-| Fused multiply-add                 |                  **45.1** |          128.2 |             88.2   |                        — |
-| Square root                        |                  **55.3** |          143.2 |           **55.3** |                        — |
-| IEEE remainder                     |                  **43.7** |          286.6 |             54.8   |                        — |
-| Round to integer, ties to even     |                  **13.3** |           30.3 |             35.1   |                   1311.0 |
+| Wide operands<br>(ns/op)[^2]       | DecimalAnnex<br>0.3.0 | Intel<br>2.0U5 | Boost<br>`21bb2ed` | Foundation<br>macOS 26.7 |
+|:-----------------------------------|----------------------:|---------------:|-------------------:|-------------------------:|
+| Add                                |              **20.1** |           36.5 |             28.5   |                    692.0 |
+| Subtract                           |              **19.9** |           36.7 |             28.4   |                    711.8 |
+| Multiply                           |              **17.8** |           56.0 |             23.2   |                    974.1 |
+| Divide                             |              **47.2** |           49.5 |             90.6   |                   1095.4 |
+| Fused multiply-add                 |              **30.8** |           89.6 |             60.2   |                        — |
+| Square root                        |              **38.6** |          101.9 |           **38.4** |                        — |
+| IEEE remainder                     |              **31.4** |          193.4 |             39.5   |                        — |
+| Round to integer, ties to even     |               **9.5** |           21.3 |             25.2   |                    928.6 |
 
 [^1]: Each operand pool contains 65,536 signed values, with independently shuffled copies for the second and third operands.
       (Square root uses the operand’s magnitude.)
