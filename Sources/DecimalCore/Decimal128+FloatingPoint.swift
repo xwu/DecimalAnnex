@@ -235,8 +235,10 @@ extension Decimal128: FloatingPoint {
   }
 
   /// Creates a new value from the given sign, exponent, and significand,
-  /// rounding to the nearest representable value (ties to even) if needed
-  /// and accumulating status flags.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// This initializer is equivalent to the following calculation, where `**`
   /// is exponentiation, computed as if by a single, correctly rounded,
@@ -281,8 +283,9 @@ extension Decimal128: FloatingPoint {
       &flags)
   }
 
-  /// Creates a new value from the given sign, exponent, and significand,
-  /// rounding to a representable value using the given rounding rule if needed.
+  /// Creates a new value from the given sign, exponent, and significand.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// This initializer is equivalent to the following calculation, where `**`
   /// is exponentiation, computed as if by a single, correctly rounded,
@@ -328,8 +331,9 @@ extension Decimal128: FloatingPoint {
   }
 
   /// Creates a new value from the given sign, exponent, and significand,
-  /// rounding to a representable value using the given rounding rule if needed
-  /// and accumulating status flags.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// This initializer is equivalent to the following calculation, where `**`
   /// is exponentiation, computed as if by a single, correctly rounded,
@@ -927,9 +931,11 @@ extension Decimal128: FloatingPoint {
       &flags)
   }
 
-  /// Returns the result of adding the product of the two given values to this
-  /// value, computed without intermediate rounding, finally rounding to the
-  /// nearest representable value (ties to even) if needed.
+  /// Returns the result of adding the product of the two given values
+  /// to this value, computed without intermediate rounding.
+  ///
+  /// The final result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// This method implements the `fusedMultiplyAdd` operation defined by the
   /// IEEE 754 specification.
@@ -946,10 +952,12 @@ extension Decimal128: FloatingPoint {
     return _addingProduct(lhs, rhs, rounding: .toNearestOrEven, &flags)
   }
 
-  /// Returns the result of adding the product of the two given values to this
-  /// value, computed without intermediate rounding, finally rounding to the
-  /// nearest representable value (ties to even) if needed and accumulating
-  /// status flags.
+  /// Returns the result of adding the product of the two given values
+  /// to this value, computed without intermediate rounding,
+  /// accumulating status flags.
+  ///
+  /// The final result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// This method implements the `fusedMultiplyAdd` operation defined by the
   /// IEEE 754 specification.
@@ -968,9 +976,10 @@ extension Decimal128: FloatingPoint {
     _addingProduct(lhs, rhs, rounding: .toNearestOrEven, &flags)
   }
 
-  /// Returns the result of adding the product of the two given values to this
-  /// value, computed without intermediate rounding, finally rounding to a
-  /// representable value using the given rounding rule if needed.
+  /// Returns the result of adding the product of the two given values
+  /// to this value, computed without intermediate rounding.
+  ///
+  /// The final result is rounded if needed using the given rounding rule.
   ///
   /// This method implements the `fusedMultiplyAdd` operation defined by the
   /// IEEE 754 specification.
@@ -989,10 +998,11 @@ extension Decimal128: FloatingPoint {
     return _addingProduct(lhs, rhs, rounding: .init(rule), &flags)
   }
 
-  /// Returns the result of adding the product of the two given values to this
-  /// value, computed without intermediate rounding, finally rounding to a
-  /// representable value using the given rounding rule if needed and
+  /// Returns the result of adding the product of the two given values
+  /// to this value, computed without intermediate rounding,
   /// accumulating status flags.
+  ///
+  /// The final result is rounded if needed using the given rounding rule.
   ///
   /// This method implements the `fusedMultiplyAdd` operation defined by the
   /// IEEE 754 specification.
@@ -1013,9 +1023,11 @@ extension Decimal128: FloatingPoint {
     _addingProduct(lhs, rhs, rounding: .init(rule), &flags)
   }
 
-  /// Adds the product of the two given values to this value in place, computed
-  /// without intermediate rounding, finally rounding to the nearest
-  /// representable value (ties to even) if needed.
+  /// Adds the product of the two given values to this value in place,
+  /// computed without intermediate rounding.
+  ///
+  /// The final result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// - Parameters:
   ///   - lhs: One of the values to multiply before adding to this value.
@@ -1025,10 +1037,11 @@ extension Decimal128: FloatingPoint {
     self = addingProduct(lhs, rhs)
   }
 
-  /// Adds the product of the two given values to this value in place, computed
-  /// without intermediate rounding, finally rounding to the nearest
-  /// representable value (ties to even) if needed and accumulating status
-  /// flags.
+  /// Adds the product of the two given values to this value in place,
+  /// computed without intermediate rounding, accumulating status flags.
+  ///
+  /// The final result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// - Parameters:
   ///   - lhs: One of the values to multiply before adding to this value.
@@ -1043,9 +1056,10 @@ extension Decimal128: FloatingPoint {
     self = addingProduct(lhs, rhs, &flags)
   }
 
-  /// Adds the product of the two given values to this value in place, computed
-  /// without intermediate rounding, finally rounding to a representable value
-  /// using the given rounding rule if needed.
+  /// Adds the product of the two given values to this value in place,
+  /// computed without intermediate rounding.
+  ///
+  /// The final result is rounded if needed using the given rounding rule.
   ///
   /// - Parameters:
   ///   - lhs: One of the values to multiply before adding to this value.
@@ -1059,9 +1073,10 @@ extension Decimal128: FloatingPoint {
     self = addingProduct(lhs, rhs, rounding: rule)
   }
 
-  /// Adds the product of the two given values to this value in place, computed
-  /// without intermediate rounding, finally rounding to a representable value
-  /// using the given rounding rule if needed and accumulating status flags.
+  /// Adds the product of the two given values to this value in place,
+  /// computed without intermediate rounding, accumulating status flags.
+  ///
+  /// The final result is rounded if needed using the given rounding rule.
   ///
   /// - Parameters:
   ///   - lhs: One of the values to multiply before adding to this value.
@@ -1342,8 +1357,10 @@ extension Decimal128: FloatingPoint {
     return isSignMinus ? -abs : abs
   }
 
-  /// Returns the quotient of dividing the first value by the second,
-  /// rounding to the nearest representable value (ties to even) if needed.
+  /// Returns the quotient of dividing the first value by the second.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// This method implements the `division` operation defined by the
   /// IEEE 754 specification.
@@ -1359,8 +1376,10 @@ extension Decimal128: FloatingPoint {
   }
 
   /// Returns the result of dividing this value by the given value,
-  /// rounding to the nearest representable value (ties to even) if needed
-  /// and accumulating status flags.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// This method implements the `division` operation defined by the
   /// IEEE 754 specification.
@@ -1378,8 +1397,9 @@ extension Decimal128: FloatingPoint {
     _divided(by: rhs, rounding: .toNearestOrEven, &flags)
   }
 
-  /// Returns the result of dividing this value by the given value,
-  /// rounding to a representable value using the given rounding rule if needed.
+  /// Returns the result of dividing this value by the given value.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// This method implements the `division` operation defined by the
   /// IEEE 754 specification.
@@ -1398,8 +1418,9 @@ extension Decimal128: FloatingPoint {
   }
 
   /// Returns the result of dividing this value by the given value,
-  /// rounding to a representable value using the given rounding rule if needed
-  /// and accumulating status flags.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// This method implements the `division` operation defined by the
   /// IEEE 754 specification.
@@ -1419,9 +1440,11 @@ extension Decimal128: FloatingPoint {
     _divided(by: rhs, rounding: .init(rule), &flags)
   }
 
-  /// Divides the first value by the second and stores the quotient in the
-  /// left-hand-side variable, rounding to the nearest representable value
-  /// (ties to even) if needed.
+  /// Divides the first value by the second
+  /// and stores the quotient in the left-hand-side variable.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// - Parameters:
   ///   - lhs: The value to divide.
@@ -1431,9 +1454,10 @@ extension Decimal128: FloatingPoint {
     lhs = lhs / rhs
   }
 
-  /// Divides this value by the given value in place,
-  /// rounding to the nearest representable value (ties to even) if needed
-  /// and accumulating status flags.
+  /// Divides this value by the given value in place, accumulating status flags.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// - Parameters:
   ///   - rhs: The value by which to divide this value.
@@ -1447,8 +1471,9 @@ extension Decimal128: FloatingPoint {
     self = divided(by: rhs, &flags)
   }
 
-  /// Divides this value by the given value in place,
-  /// rounding to a representable value using the given rounding rule if needed.
+  /// Divides this value by the given value in place.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// - Parameters:
   ///   - rhs: The value by which to divide this value.
@@ -1461,9 +1486,9 @@ extension Decimal128: FloatingPoint {
     self = divided(by: rhs, rounding: rule)
   }
 
-  /// Divides this value by the given value in place,
-  /// rounding to a representable value using the given rounding rule if needed
-  /// and accumulating status flags.
+  /// Divides this value by the given value in place, accumulating status flags.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// - Parameters:
   ///   - rhs: The value by which to divide this value.
@@ -1940,8 +1965,10 @@ extension Decimal128: FloatingPoint {
     return Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | estimate)
   }
 
-  /// Returns the square root of the value,
-  /// rounding to the nearest representable value (ties to even) if needed.
+  /// Returns the square root of the value.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// This method implements the `squareRoot` operation defined by the
   /// IEEE 754 specification.
@@ -1953,9 +1980,10 @@ extension Decimal128: FloatingPoint {
     return _squareRoot(rounding: .toNearestOrEven, &flags)
   }
 
-  /// Returns the square root of the value,
-  /// rounding to the nearest representable value (ties to even) if needed
-  /// and accumulating status flags.
+  /// Returns the square root of the value, accumulating status flags.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// This method implements the `squareRoot` operation defined by the
   /// IEEE 754 specification.
@@ -1971,8 +1999,9 @@ extension Decimal128: FloatingPoint {
     _squareRoot(rounding: .toNearestOrEven, &flags)
   }
 
-  /// Returns the square root of the value,
-  /// rounding to a representable value using the given rounding rule if needed.
+  /// Returns the square root of the value.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// This method implements the `squareRoot` operation defined by the
   /// IEEE 754 specification.
@@ -1988,9 +2017,9 @@ extension Decimal128: FloatingPoint {
     return _squareRoot(rounding: .init(rule), &flags)
   }
 
-  /// Returns the square root of the value,
-  /// rounding to a representable value using the given rounding rule if needed
-  /// and accumulating status flags.
+  /// Returns the square root of the value, accumulating status flags.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// This method implements the `squareRoot` operation defined by the
   /// IEEE 754 specification.
@@ -2008,16 +2037,19 @@ extension Decimal128: FloatingPoint {
     _squareRoot(rounding: .init(rule), &flags)
   }
 
-  /// Replaces this value with its square root,
-  /// rounding to the nearest representable value (ties to even) if needed.
+  /// Replaces this value with its square root.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   @inline(always)
   public mutating func formSquareRoot() {
     self = squareRoot()
   }
 
-  /// Replaces this value with its square root,
-  /// rounding to the nearest representable value (ties to even) if needed
-  /// and accumulating status flags.
+  /// Replaces this value with its square root, accumulating status flags.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// - Parameters:
   ///   - flags: A value that accumulates decimal floating-point arithmetic
@@ -2029,8 +2061,9 @@ extension Decimal128: FloatingPoint {
     self = squareRoot(&flags)
   }
 
-  /// Replaces this value with its square root,
-  /// rounding to a representable value using the given rounding rule if needed.
+  /// Replaces this value with its square root.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// - Parameters:
   ///   - rule: The rounding rule to use for an inexact result.
@@ -2041,9 +2074,9 @@ extension Decimal128: FloatingPoint {
     self = squareRoot(rounding: rule)
   }
 
-  /// Replaces this value with its square root,
-  /// rounding to a representable value using the given rounding rule if needed
-  /// and accumulating status flags.
+  /// Replaces this value with its square root, accumulating status flags.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// - Parameters:
   ///   - rule: The rounding rule to use for an inexact result.

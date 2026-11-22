@@ -126,8 +126,10 @@ extension Decimal128 {
     return Self(sign: sign, exponentBitPattern: oe, significandBitPattern: c)
   }
 
-  /// Returns this value with the same quantum as the given value,
-  /// rounding to the nearest representable value (ties to even) if needed.
+  /// Returns this value with the same quantum as the given value.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// with the requested quantum (ties to even).
   ///
   /// For finite operands, the result has the same represented exponent as
   /// `other` and the same sign as this value. If the requested exponent would
@@ -149,8 +151,10 @@ extension Decimal128 {
   }
 
   /// Returns this value with the same quantum as the given value,
-  /// rounding to the nearest representable value (ties to even) if needed
-  /// and accumulating status flags.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// with the requested quantum (ties to even).
   ///
   /// For finite operands, the result has the same represented exponent as
   /// `other` and the same sign as this value. If the requested exponent would
@@ -175,8 +179,9 @@ extension Decimal128 {
     _quantized(by: other, rounding: .toNearestOrEven, &flags)
   }
 
-  /// Returns this value with the same quantum as the given value,
-  /// rounding using the given rounding rule if needed.
+  /// Returns this value with the same quantum as the given value.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// For finite operands, the result has the same represented exponent as
   /// `other` and the same sign as this value. If the requested exponent would
@@ -202,8 +207,9 @@ extension Decimal128 {
   }
 
   /// Returns this value with the same quantum as the given value,
-  /// rounding using the given rounding rule if needed and accumulating
-  /// status flags.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// For finite operands, the result has the same represented exponent as
   /// `other` and the same sign as this value. If the requested exponent would
@@ -230,8 +236,10 @@ extension Decimal128 {
     _quantized(by: other, rounding: .init(rule), &flags)
   }
 
-  /// Changes this value to have the same quantum as the given value,
-  /// rounding to the nearest representable value (ties to even) if needed.
+  /// Changes this value to have the same quantum as the given value.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// with the requested quantum (ties to even).
   ///
   /// For finite operands, the result has the same represented exponent as
   /// `other` and the same sign as this value. If the requested exponent would
@@ -248,8 +256,10 @@ extension Decimal128 {
   }
 
   /// Changes this value to have the same quantum as the given value,
-  /// rounding to the nearest representable value (ties to even) if needed
-  /// and accumulating status flags.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// with the requested quantum (ties to even).
   ///
   /// For finite operands, the result has the same represented exponent as
   /// `other` and the same sign as this value. If the requested exponent would
@@ -270,8 +280,9 @@ extension Decimal128 {
     self = quantized(by: other, &flags)
   }
 
-  /// Changes this value to have the same quantum as the given value,
-  /// rounding using the given rounding rule if needed.
+  /// Changes this value to have the same quantum as the given value.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// For finite operands, the result has the same represented exponent as
   /// `other` and the same sign as this value. If the requested exponent would
@@ -292,8 +303,9 @@ extension Decimal128 {
   }
 
   /// Changes this value to have the same quantum as the given value,
-  /// rounding using the given rounding rule if needed and accumulating status
-  /// flags.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// For finite operands, the result has the same represented exponent as
   /// `other` and the same sign as this value. If the requested exponent would

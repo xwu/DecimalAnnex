@@ -198,8 +198,10 @@ extension Decimal128 {
       &flags)
   }
 
-  /// Creates a new value from the given integer, rounding to the nearest
-  /// representable value (ties to even) if needed.
+  /// Creates a new value from the given integer.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// For an exact result, the represented exponent is as close to zero as
   /// possible without changing the value.
@@ -215,9 +217,10 @@ extension Decimal128 {
     self.init(source, _rounding: .toNearestOrEven, &flags)
   }
 
-  /// Creates a new value from the given integer, rounding to the nearest
-  /// representable value (ties to even) if needed and accumulating status
-  /// flags.
+  /// Creates a new value from the given integer, accumulating status flags.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// For an exact result, the represented exponent is as close to zero as
   /// possible without changing the value.
@@ -237,8 +240,9 @@ extension Decimal128 {
     self.init(source, _rounding: .toNearestOrEven, &flags)
   }
 
-  /// Creates a new value from the given integer, rounding to a representable
-  /// value using the given rounding rule if needed.
+  /// Creates a new value from the given integer.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// For an exact result, the represented exponent is as close to zero as
   /// possible without changing the value.
@@ -258,9 +262,9 @@ extension Decimal128 {
     self.init(source, _rounding: .init(rule), &flags)
   }
 
-  /// Creates a new value from the given integer, rounding to a representable
-  /// value using the given rounding rule if needed and accumulating status
-  /// flags.
+  /// Creates a new value from the given integer, accumulating status flags.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// For an exact result, the represented exponent is as close to zero as
   /// possible without changing the value.
@@ -313,8 +317,10 @@ extension BinaryFloatingPoint {
   }
 
   /// Creates a new binary floating-point value from the given decimal
-  /// floating-point value, rounding to the nearest representable value
-  /// (ties to even) if needed.
+  /// floating-point value.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// This initializer implements the `convertFormat` operation defined by the
   /// IEEE 754 specification (other than reporting status flags).
@@ -605,8 +611,10 @@ extension Decimal128 {
   }
 
   /// Creates a new decimal floating-point value from the given binary
-  /// floating-point value, rounding to the nearest representable value
-  /// (ties to even) if needed.
+  /// floating-point value.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// For an exact finite result, the represented exponent is as close to zero
   /// as possible without changing the value.
@@ -636,8 +644,10 @@ extension Decimal128 {
   }
 
   /// Creates a new decimal floating-point value from the given binary
-  /// floating-point value, rounding to the nearest representable value
-  /// (ties to even) if needed and accumulating status flags.
+  /// floating-point value, accumulating status flags.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// For an exact finite result, the represented exponent is as close to zero
   /// as possible without changing the value.
@@ -671,8 +681,9 @@ extension Decimal128 {
   }
 
   /// Creates a new decimal floating-point value from the given binary
-  /// floating-point value, rounding to a representable value using the given
-  /// rounding rule if needed.
+  /// floating-point value.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// For an exact finite result, the represented exponent is as close to zero
   /// as possible without changing the value.
@@ -706,8 +717,9 @@ extension Decimal128 {
   }
 
   /// Creates a new decimal floating-point value from the given binary
-  /// floating-point value, rounding to a representable value using the given
-  /// rounding rule if needed and accumulating status flags.
+  /// floating-point value, accumulating status flags.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// For an exact finite result, the represented exponent is as close to zero
   /// as possible without changing the value.
@@ -1378,8 +1390,10 @@ extension Decimal128: LosslessStringConvertible {
     return nil
   }
 
-  /// Creates a new value from the given string representation,
-  /// rounding to the nearest representable value (ties to even) if needed.
+  /// Creates a new value from the given string representation.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// The string passed as `description` may begin with an optional plus (`+`)
   /// or hyphen-minus (`-`) sign character, followed by a significand that must
@@ -1406,8 +1420,10 @@ extension Decimal128: LosslessStringConvertible {
   }
 
   /// Creates a new value from the given string representation,
-  /// rounding to the nearest representable value (ties to even) if needed
-  /// and accumulating status flags.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// The string passed as `description` may begin with an optional plus (`+`)
   /// or hyphen-minus (`-`) sign character, followed by a significand that must
@@ -1437,8 +1453,9 @@ extension Decimal128: LosslessStringConvertible {
     self.init(description, _rounding: .toNearestOrEven, &flags)
   }
 
-  /// Creates a new value from the given string representation,
-  /// rounding to a representable value using the given rounding rule if needed.
+  /// Creates a new value from the given string representation.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// The string passed as `description` may begin with an optional plus (`+`)
   /// or hyphen-minus (`-`) sign character, followed by a significand that must
@@ -1469,8 +1486,9 @@ extension Decimal128: LosslessStringConvertible {
   }
 
   /// Creates a new value from the given string representation,
-  /// rounding to a representable value using the given rounding rule if needed
-  /// and accumulating status flags.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// The string passed as `description` may begin with an optional plus (`+`)
   /// or hyphen-minus (`-`) sign character, followed by a significand that must

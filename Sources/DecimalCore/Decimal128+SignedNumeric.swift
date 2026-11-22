@@ -603,8 +603,10 @@ extension Decimal128: AdditiveArithmetic {
       &flags)
   }
 
-  /// Adds two values and produces their sum,
-  /// rounding to the nearest representable value (ties to even) if needed.
+  /// Adds two values and produces their sum.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// This method implements the `addition` operation defined by the
   /// IEEE 754 specification.
@@ -620,8 +622,10 @@ extension Decimal128: AdditiveArithmetic {
   }
 
   /// Returns the result of adding the given value to this value,
-  /// rounding to the nearest representable value (ties to even) if needed
-  /// and accumulating status flags.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// This method implements the `addition` operation defined by the
   /// IEEE 754 specification.
@@ -639,8 +643,9 @@ extension Decimal128: AdditiveArithmetic {
     _adding(rhs, rounding: .toNearestOrEven, &flags)
   }
 
-  /// Returns the result of adding the given value to this value,
-  /// rounding to a representable value using the given rounding rule if needed.
+  /// Returns the result of adding the given value to this value.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// This method implements the `addition` operation defined by the
   /// IEEE 754 specification.
@@ -659,8 +664,9 @@ extension Decimal128: AdditiveArithmetic {
   }
 
   /// Returns the result of adding the given value to this value,
-  /// rounding to a representable value using the given rounding rule if needed
-  /// and accumulating status flags.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// This method implements the `addition` operation defined by the
   /// IEEE 754 specification.
@@ -680,8 +686,10 @@ extension Decimal128: AdditiveArithmetic {
     _adding(rhs, rounding: .init(rule), &flags)
   }
 
-  /// Adds two values and stores the result in the left-hand-side variable,
-  /// rounding to the nearest representable value (ties to even) if needed.
+  /// Adds two values and stores the result in the left-hand-side variable.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// - Parameters:
   ///   - lhs: The first value to add.
@@ -691,8 +699,10 @@ extension Decimal128: AdditiveArithmetic {
     lhs = lhs + rhs
   }
 
-  /// Adds the given value to this value in place,
-  /// rounding to the nearest representable value (ties to even) if needed.
+  /// Adds the given value to this value in place, accumulating status flags.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// - Parameters:
   ///   - rhs: The value to add to this value.
@@ -706,8 +716,9 @@ extension Decimal128: AdditiveArithmetic {
     self = adding(rhs, &flags)
   }
 
-  /// Adds the given value to this value in place,
-  /// rounding to a representable value using the given rounding rule if needed.
+  /// Adds the given value to this value in place.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// - Parameters:
   ///   - rhs: The value to add to this value.
@@ -720,8 +731,9 @@ extension Decimal128: AdditiveArithmetic {
     self = adding(rhs, rounding: rule)
   }
 
-  /// Adds the given value to this value in place,
-  /// rounding to a representable value using the given rounding rule if needed.
+  /// Adds the given value to this value in place, accumulating status flags.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// - Parameters:
   ///   - rhs: The value to add to this value.
@@ -737,8 +749,10 @@ extension Decimal128: AdditiveArithmetic {
     self = adding(rhs, rounding: rule, &flags)
   }
 
-  /// Subtracts one value from another and produces their difference,
-  /// rounding to the nearest representable value (ties to even) if needed.
+  /// Subtracts one value from another and produces their difference.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// This method implements the `subtraction` operation defined by the
   /// IEEE 754 specification.
@@ -761,8 +775,10 @@ extension Decimal128: AdditiveArithmetic {
   }
 
   /// Returns the result of subtracting the given value from this value,
-  /// rounding to the nearest representable value (ties to even) if needed
-  /// and accumulating status flags.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// This method implements the `subtraction` operation defined by the
   /// IEEE 754 specification.
@@ -785,8 +801,9 @@ extension Decimal128: AdditiveArithmetic {
 #endif
   }
 
-  /// Returns the result of subtracting the given value from this value,
-  /// rounding to a representable value using the given rounding rule if needed.
+  /// Returns the result of subtracting the given value from this value.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// This method implements the `subtraction` operation defined by the
   /// IEEE 754 specification.
@@ -810,8 +827,9 @@ extension Decimal128: AdditiveArithmetic {
   }
 
   /// Returns the result of subtracting the given value from this value,
-  /// rounding to a representable value using the given rounding rule if needed
-  /// and accumulating status flags.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// This method implements the `subtraction` operation defined by the
   /// IEEE 754 specification.
@@ -836,9 +854,11 @@ extension Decimal128: AdditiveArithmetic {
 #endif
   }
 
-  /// Subtracts the second value from the first and stores the difference in the
-  /// left-hand-side variable, rounding to the nearest representable value
-  /// (ties to even) if needed.
+  /// Subtracts the second value from the first
+  /// and stores the difference in the left-hand-side variable.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// - Parameters:
   ///   - lhs: A numeric value.
@@ -849,7 +869,10 @@ extension Decimal128: AdditiveArithmetic {
   }
 
   /// Subtracts the given value from this value in place,
-  /// rounding to the nearest representable value (ties to even) if needed.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// - Parameters:
   ///   - rhs: The value to subtract from this value.
@@ -863,8 +886,9 @@ extension Decimal128: AdditiveArithmetic {
     self = subtracting(rhs, &flags)
   }
 
-  /// Subtracts the given value from this value in place,
-  /// rounding to a representable value using the given rounding rule if needed.
+  /// Subtracts the given value from this value in place.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// - Parameters:
   ///   - rhs: The value to subtract from this value.
@@ -878,7 +902,9 @@ extension Decimal128: AdditiveArithmetic {
   }
 
   /// Subtracts the given value from this value in place,
-  /// rounding to a representable value using the given rounding rule if needed.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// - Parameters:
   ///   - rhs: The value to subtract from this value.
@@ -969,8 +995,10 @@ extension Decimal128: Numeric {
       &flags)
   }
 
-  /// Multiplies two values and produces their product,
-  /// rounding to the nearest representable value (ties to even) if needed.
+  /// Multiplies two values and produces their product.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// This method implements the `multiplication` operation defined by the
   /// IEEE 754 specification.
@@ -986,8 +1014,10 @@ extension Decimal128: Numeric {
   }
 
   /// Returns the result of multiplying this value by the given value,
-  /// rounding to the nearest representable value (ties to even) if needed
-  /// and accumulating status flags.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// This method implements the `multiplication` operation defined by the
   /// IEEE 754 specification.
@@ -1005,8 +1035,9 @@ extension Decimal128: Numeric {
     _multiplied(by: rhs, rounding: .toNearestOrEven, &flags)
   }
 
-  /// Returns the result of multiplying this value by the given value,
-  /// rounding to a representable value using the given rounding rule if needed.
+  /// Returns the result of multiplying this value by the given value.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// This method implements the `multiplication` operation defined by the
   /// IEEE 754 specification.
@@ -1025,8 +1056,9 @@ extension Decimal128: Numeric {
   }
 
   /// Returns the result of multiplying this value by the given value,
-  /// rounding to a representable value using the given rounding rule if needed
-  /// and accumulating status flags.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// This method implements the `multiplication` operation defined by the
   /// IEEE 754 specification.
@@ -1046,9 +1078,11 @@ extension Decimal128: Numeric {
     _multiplied(by: rhs, rounding: .init(rule), &flags)
   }
 
-  /// Multiplies two values and stores the result in the left-hand-side
-  /// variable, rounding to the nearest representable value (ties to even)
-  /// if needed.
+  /// Multiplies two values
+  /// and stores the result in the left-hand-side variable.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// - Parameters:
   ///   - lhs: The first value to multiply.
@@ -1059,7 +1093,10 @@ extension Decimal128: Numeric {
   }
 
   /// Multiplies this value by the given value in place,
-  /// rounding to the nearest representable value (ties to even) if needed.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
   ///
   /// - Parameters:
   ///   - rhs: The value by which to multiply this value.
@@ -1073,8 +1110,9 @@ extension Decimal128: Numeric {
     self = multiplied(by: rhs, &flags)
   }
 
-  /// Multiplies this value by the given value in place,
-  /// rounding to a representable value using the given rounding rule if needed.
+  /// Multiplies this value by the given value in place.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// - Parameters:
   ///   - rhs: The value by which to multiply this value.
@@ -1088,7 +1126,9 @@ extension Decimal128: Numeric {
   }
 
   /// Multiplies this value by the given value in place,
-  /// rounding to a representable value using the given rounding rule if needed.
+  /// accumulating status flags.
+  ///
+  /// The result is rounded if needed using the given rounding rule.
   ///
   /// - Parameters:
   ///   - rhs: The value by which to multiply this value.
