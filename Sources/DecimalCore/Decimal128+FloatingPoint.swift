@@ -9,6 +9,12 @@ extension Decimal128: Strideable {
 
 @available(anyAppleOS 26.0, *)
 extension Decimal128: FloatingPoint {
+  /// The radix, or base of exponentiation, for this floating-point type (10).
+  ///
+  /// The magnitude of a floating-point value `x` of type `F` can be calculated
+  /// by using the following formula, where `**` is exponentiation:
+  ///
+  ///     x.significand * (F.radix ** x.exponent)
   @inline(always)
   public static var radix: Int { 10 }
 
@@ -219,6 +225,33 @@ extension Decimal128: FloatingPoint {
     self = isSignMinus ? -abs : abs
   }
 
+  /// Creates a new value from the given sign, exponent, and significand.
+  ///
+  /// The result is rounded if needed to the nearest representable value
+  /// (ties to even).
+  ///
+  /// This initializer is equivalent to the following calculation, where `**`
+  /// is exponentiation, computed as if by a single, correctly rounded,
+  /// floating-point operation:
+  ///
+  ///     (sign == .minus ? -1 : 1) * significand * 10 ** exponent
+  ///
+  /// As with any basic operation, if this value is outside the representable
+  /// range of the type, overflow or underflow occurs, and zero, a subnormal
+  /// value, or infinity may result. In addition, there are two other edge
+  /// cases:
+  ///
+  /// - If the value you pass to `significand` is zero or infinite, the result
+  ///   is zero or infinite, regardless of the value of `exponent`.
+  /// - If the value you pass to `significand` is NaN, the result is NaN.
+  ///
+  /// This initializer implements the `scaleB` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - sign: The sign to apply to `significand`.
+  ///   - exponent: The power of ten by which to scale `significand`.
+  ///   - significand: The significand to scale.
   @inline(always)
   public init(sign: FloatingPointSign, exponent: Int, significand: Decimal128) {
     if let x = Self(_sign: sign, exponent: exponent, significand: significand) {
@@ -1702,6 +1735,25 @@ extension Decimal128: FloatingPoint {
     return isSignMinus ? -abs : abs
   }
 
+  /// Returns the remainder of this value divided by the given value.
+  ///
+  /// For two finite values `x` and `y`, where `y` is nonzero, the remainder `r`
+  /// of dividing `x` by `y` satisfies `x == y * q + r`, where `q` is the
+  /// integer nearest to `x / y`. If `x / y` is exactly halfway between two
+  /// integers, `q` is chosen to be even. Note that `q` is *not* `x / y`
+  /// computed in floating-point arithmetic, and that `q` may not be
+  /// representable in any available integer type.
+  ///
+  /// If this value and `other` are both finite numbers and `other` is nonzero,
+  /// the remainder has magnitude at most half of `other.magnitude`. The result
+  /// is always exact.
+  ///
+  /// This method implements the `remainder` operation defined by the
+  /// IEEE 754 specification.
+  ///
+  /// - Parameters:
+  ///   - other: The value to use when dividing this value.
+  /// - Returns: The remainder of this value divided by `other`.
   @inline(always)
   public func remainder(dividingBy other: Decimal128) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
@@ -1739,6 +1791,22 @@ extension Decimal128: FloatingPoint {
     _remainder(truncating: false, dividingBy: other, &flags)
   }
 
+  /// Replaces this value with the remainder of itself divided by the given
+  /// value.
+  ///
+  /// For two finite values `x` and `y`, where `y` is nonzero, the remainder `r`
+  /// of dividing `x` by `y` satisfies `x == y * q + r`, where `q` is the
+  /// integer nearest to `x / y`. If `x / y` is exactly halfway between two
+  /// integers, `q` is chosen to be even. Note that `q` is *not* `x / y`
+  /// computed in floating-point arithmetic, and that `q` may not be
+  /// representable in any available integer type.
+  ///
+  /// If this value and `other` are both finite numbers and `other` is nonzero,
+  /// the remainder has magnitude at most half of `other.magnitude`. The result
+  /// is always exact.
+  ///
+  /// - Parameters:
+  ///   - other: The value to use when dividing this value.
   @inline(always)
   public mutating func formRemainder(dividingBy other: Decimal128) {
     self = remainder(dividingBy: other)
@@ -1770,6 +1838,22 @@ extension Decimal128: FloatingPoint {
     self = remainder(dividingBy: other, &flags)
   }
 
+  /// Returns the remainder of this value divided by the given value using
+  /// truncating division.
+  ///
+  /// Performing truncating division with floating-point values results in a
+  /// truncated integer quotient and a remainder. For values `x` and `y` and
+  /// their truncated integer quotient `q`, the remainder `r` satisfies
+  /// `x == y * q + r`.
+  ///
+  /// If this value and `other` are both finite numbers and `other` is nonzero,
+  /// the truncating remainder has the same sign as this value and is strictly
+  /// smaller in magnitude than `other`. The result is always exact.
+  ///
+  /// - Parameters:
+  ///   - other: The value to use when dividing this value.
+  /// - Returns: The remainder of this value divided by `other` using
+  ///   truncating division.
   @inline(always)
   public func truncatingRemainder(dividingBy other: Decimal128) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
@@ -1803,6 +1887,20 @@ extension Decimal128: FloatingPoint {
     _remainder(truncating: true, dividingBy: other, &flags)
   }
 
+  /// Replaces this value with the remainder of itself divided by the given
+  /// value using truncating division.
+  ///
+  /// Performing truncating division with floating-point values results in a
+  /// truncated integer quotient and a remainder. For values `x` and `y` and
+  /// their truncated integer quotient `q`, the remainder `r` satisfies
+  /// `x == y * q + r`.
+  ///
+  /// If this value and `other` are both finite numbers and `other` is nonzero,
+  /// the truncating remainder has the same sign as this value and is strictly
+  /// smaller in magnitude than `other`. The result is always exact.
+  ///
+  /// - Parameters:
+  ///   - other: The value to use when dividing this value.
   @inline(always)
   public mutating func formTruncatingRemainder(dividingBy other: Decimal128) {
     self = truncatingRemainder(dividingBy: other)

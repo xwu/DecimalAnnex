@@ -1150,6 +1150,16 @@ extension Decimal128: Numeric {
     self = multiplied(by: rhs, rounding: rule, &flags)
   }
 
+  /// Creates a new value from the given integer, if it can be represented
+  /// exactly.
+  ///
+  /// For an exact result, the represented (quantum) exponent is
+  /// as close to zero as possible without changing the value.
+  /// If `source` can't be represented exactly after conversion,
+  /// the result is `nil`.
+  ///
+  /// - Parameters:
+  ///   - source: The integer to convert.
   @inline(always)
   public init?<T: BinaryInteger>(exactly source: T) {
     var flags: DecimalFloatingPointStatusFlags = []
