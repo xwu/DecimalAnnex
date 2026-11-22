@@ -1802,6 +1802,10 @@ extension Decimal128: FloatingPoint {
     // FIXME: Include an alternative implementation using integer math
     // that leaves binary floating-point status flags unaffected which
     // could be conditionally compiled in.
+    //
+    // Assuming other `Double` operations are correctly rounded to nearest,
+    // correct rounding is *not* required for `Double.squareRoot()`;
+    // we can tolerate an error in that operation up to 5.5 ulp.
     let radicand = (exponentBitPattern & 1) == 0 ? c : c &* 10
     let estimate_ =
       (Double(UInt64(truncatingIfNeeded: radicand &>> 64)) * 0x1p64
@@ -1846,45 +1850,37 @@ extension Decimal128: FloatingPoint {
         + Double(UInt64(truncatingIfNeeded: scale))
       // `Double(scale)`
     let scaled_ = estimate_ * scale_
-    do {
-      // `estimate = min(UInt128(scaled_), ._1e34 &- 1)`
-      let x = scaled_.significandBitPattern | 0x0010_0000_0000_0000
-      let shift = Int(scaled_.exponentBitPattern) &- 1075 // `shift` is positive.
-      estimate = min(UInt128(truncatingIfNeeded: x) &<< shift, ._1e34 &- 1)
-    }
-    // A single correction step per Newton's method.
-    let quo: UInt128 =
-      ._quotientAndRemainder(fullWidth: c_, dividingBy: estimate).quotient
-    estimate = (estimate &+ quo) &>> 1
-    // The error analysis shows that `0 <= estimate - actual < 3946`,
-    // where `actual` is the actual raw significand of the flooring square root.
 
+    // Scale down the root estimate by 2**49 so its high part fits in `UInt64`.
+    let scaled = UInt64(scaled_ * 0x1p-49)
+    // Scale down the radicand by 2**98 (and take the floor).
+    let c__ = (c_.high &<< 30) | (c_.low &>> 98)
+
+    let delta1 = c__ &- UInt128(scaled) &* UInt128(scaled)
+    let d1_ = Double(Int64(truncatingIfNeeded: delta1 &>> 32))
+    // Correct `scaled` by:
+    //
+    //            delta1 / (2 * scaled)
+    //     ≈ d1_ * 2**32 / (2 * scaled)
+    //     = d1_ * 2**31 / scaled
+    //     = d1_ * 2**80 / scaled_
+    let x_ = 0x1p80 / scaled_
+    let high = scaled &+ UInt64(bitPattern: Int64((d1_ * x_).rounded()))
+
+    let delta2 = c__ &- UInt128(high) &* UInt128(high)
+    let d2_ = Double(Int64(truncatingIfNeeded: delta2 &>> 1))
+    // Compute:
+    //
+    //       delta2 * 2**49 / (2 * scaled)
+    //     ≈    d2_ * 2**49 / scaled
+    //     =    d2_ * 2**98 / scaled_
+    let low = Int64((d2_ * (0x1p18 * x_)).rounded())
+
+    estimate = (UInt128(high) &<< 49) &+ UInt128(truncatingIfNeeded: low)
     var remainder = c_.low &- estimate &* estimate
-    if Int128(truncatingIfNeeded: remainder) < 0 {
-      let difference = 0 &- remainder
-      // See discussion in `_divided` about computing a ratio using the high
-      // half of each operand.
-      let dh = UInt64(truncatingIfNeeded: difference &>> 64)
-      let _2eh = UInt64(truncatingIfNeeded: (estimate &<< 1) &>> 64)
-      // Here, `_2eh * (_2eh + 2) > dh` is assured, so our estimate of
-      // `floor(difference / (2 * estimate))` by `floor(dh / _2eh)` is either
-      // exact or overestimates the exact flooring quotient by one.
-      //
-      // Subtracting by the exact flooring quotient would leave `estimate`
-      // equal to `actual + 1` or `actual + 2`. So, subtracting by the possible
-      // overestimate would give us `actual`, `actual + 1`, or `actual + 2`.
-      // We'll subtract by one more to center `estimate`, such that it's one of
-      // `actual - 1`, `actual`, or `actual + 1`.
-      estimate &-= UInt128(dh / _2eh) &+ 1
-      remainder = c_.low &- estimate &* estimate
-      // Given the error analysis above, and given that `c_` is a multiple of
-      // `1e33` (hence making `c_.low` divisible by `2**33`), it is possible to
-      // demonstrate a modular contradiction if `estimate == actual + 1`.
-      assert(Int128(truncatingIfNeeded: remainder) >= 0)
-      if remainder > estimate &<< 1 {
-        remainder &-= (estimate &<< 1) &+ 1
-        estimate &+= 1
-      }
+    if Int128(bitPattern: remainder) < 0 {
+      remainder &+= (estimate &<< 1) &- 1
+      estimate &-= 1
     }
     assert(remainder <= estimate &<< 1)
 
@@ -1906,13 +1902,10 @@ extension Decimal128: FloatingPoint {
         @unknown default:
           fatalError("Unknown rounding rule.")
         }
-      if nextAway {
-        if estimate == ._1e34 &- 1 {
-          estimate = ._1e33
-          e &+= 1
-        } else {
-          estimate &+= 1
-        }
+      estimate &+= nextAway ? 1 : 0
+      if estimate == ._1e34 {
+        estimate = ._1e33
+        e &+= 1
       }
     }
     return Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | estimate)
