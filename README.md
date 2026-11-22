@@ -53,7 +53,7 @@ It has been tested (outside this repository) against published corpora, and it b
 
 ## Representation
 
-Decimal floating-point values have a *quantum*: the power of ten associated with their integer coefficient.
+Decimal floating-point values have a *quantum*: the power of ten associated with their integer significand (coefficient).
 This distinguishes representations such as `1.0` and `1.00` that compare equal to each other and hash identically.
 For arithmetic operations, IEEE 754 "preferred exponent" rules determine the representation of their results;
 use `quantized(by:)` to select a quantum explicitly.
