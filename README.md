@@ -45,7 +45,7 @@ It has been tested (outside this repository) against published corpora, and it b
       (Square root uses the operand’s magnitude.)
       Tables show median nanoseconds per operation (ns/op) on Apple M2 Pro sampled in full batches of 4,096 operations.
       'Everyday' operands are sampled from: amounts in cents (50%), whole numbers (25%),
-      and fractions of magnitude less than one with two to eight decimal places (25%).
+      and fractions of magnitude less than one with 2–8 decimal places (25%).
 [^2]: Wide operands have 17–34 significand digits.
       In 7/8 of draws, the adjusted exponent is sampled uniformly from −6 through +16;
       in 7/64, the adjusted exponent is sampled uniformly from −24 through +64; and
