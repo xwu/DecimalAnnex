@@ -1849,7 +1849,7 @@ extension Decimal128: FloatingPoint {
         }
         return .infinity
       }
-      // Halve the represented exponent without unbiasing, then rebiasing.
+      // Halve the quantum exponent (rounding down) without unbiasing.
       let e = (exponentBitPattern &+ 6176) &>> 1
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113)
       return _isSignMinus ? -abs : abs

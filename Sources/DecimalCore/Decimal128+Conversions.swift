@@ -203,8 +203,8 @@ extension Decimal128 {
   /// The result is rounded if needed to the nearest representable value
   /// (ties to even).
   ///
-  /// For an exact result, the represented exponent is as close to zero as
-  /// possible without changing the value.
+  /// For an exact result, the represented (quantum) exponent is
+  /// as close to zero as possible without changing the value.
   ///
   /// This initializer implements the `convertFromInt` operation defined by the
   /// IEEE 754 specification.
@@ -223,8 +223,8 @@ extension Decimal128 {
   /// The result is rounded if needed to the nearest representable value
   /// (ties to even).
   ///
-  /// For an exact result, the represented exponent is as close to zero as
-  /// possible without changing the value.
+  /// For an exact result, the represented (quantum) exponent is
+  /// as close to zero as possible without changing the value.
   ///
   /// This initializer implements the `convertFromInt` operation defined by the
   /// IEEE 754 specification.
@@ -245,8 +245,8 @@ extension Decimal128 {
   ///
   /// The result is rounded if needed using the given rounding rule.
   ///
-  /// For an exact result, the represented exponent is as close to zero as
-  /// possible without changing the value.
+  /// For an exact result, the represented (quantum) exponent is
+  /// as close to zero as possible without changing the value.
   ///
   /// This initializer implements the `convertFromInt` operation defined by the
   /// IEEE 754 specification.
@@ -268,8 +268,8 @@ extension Decimal128 {
   ///
   /// The result is rounded if needed using the given rounding rule.
   ///
-  /// For an exact result, the represented exponent is as close to zero as
-  /// possible without changing the value.
+  /// For an exact result, the represented (quantum) exponent is
+  /// as close to zero as possible without changing the value.
   ///
   /// This initializer implements the `convertFromInt` operation defined by the
   /// IEEE 754 specification.
@@ -621,8 +621,8 @@ extension Decimal128 {
   /// The result is rounded if needed to the nearest representable value
   /// (ties to even).
   ///
-  /// For an exact finite result, the represented exponent is as close to zero
-  /// as possible without changing the value.
+  /// For an exact finite result, the represented (quantum) exponent is
+  /// as close to zero as possible without changing the value.
   ///
   /// This initializer implements the `convertFormat` operation defined by
   /// the IEEE 754 specification.
@@ -655,8 +655,8 @@ extension Decimal128 {
   /// The result is rounded if needed to the nearest representable value
   /// (ties to even).
   ///
-  /// For an exact finite result, the represented exponent is as close to zero
-  /// as possible without changing the value.
+  /// For an exact finite result, the represented (quantum) exponent is
+  /// as close to zero as possible without changing the value.
   ///
   /// This initializer implements the `convertFormat` operation defined by
   /// the IEEE 754 specification.
@@ -691,8 +691,8 @@ extension Decimal128 {
   ///
   /// The result is rounded if needed using the given rounding rule.
   ///
-  /// For an exact finite result, the represented exponent is as close to zero
-  /// as possible without changing the value.
+  /// For an exact finite result, the represented (quantum) exponent is
+  /// as close to zero as possible without changing the value.
   ///
   /// This initializer implements the `convertFormat` operation defined by
   /// the IEEE 754 specification.
@@ -728,8 +728,8 @@ extension Decimal128 {
   ///
   /// The result is rounded if needed using the given rounding rule.
   ///
-  /// For an exact finite result, the represented exponent is as close to zero
-  /// as possible without changing the value.
+  /// For an exact finite result, the represented (quantum) exponent is
+  /// as close to zero as possible without changing the value.
   ///
   /// This initializer implements the `convertFormat` operation defined by
   /// the IEEE 754 specification.
@@ -764,9 +764,10 @@ extension Decimal128 {
   /// Creates a new decimal floating-point value from the given binary
   /// floating-point value, if it can be represented exactly.
   ///
-  /// For an exact finite result, the represented exponent is as close to zero
-  /// as possible without changing the value. If `source` is NaN or can't be
-  /// represented exactly after conversion, the result is `nil`.
+  /// For an exact finite result, the represented (quantum) exponent is
+  /// as close to zero as possible without changing the value.
+  /// If `source` is NaN or can't be represented exactly after conversion,
+  /// the result is `nil`.
   ///
   /// - Parameters:
   ///   - source: The binary floating-point value to convert.

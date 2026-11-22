@@ -233,8 +233,8 @@ extension _Cox {
 
     var d = dhi / 10
     if d &* 10 >= dlo {
-      let (c, e) = trimZeros(d, -(p &- 1))
-      return (c, e, nil)
+      let (c, q) = trimZeros(d, -(p &- 1))
+      return (c, q, nil)
     }
     d = dlo
     if dlo < dhi {

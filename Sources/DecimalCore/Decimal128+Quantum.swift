@@ -3,8 +3,14 @@ extension Decimal128 {
   /// The quantum of this value.
   ///
   /// If `x` is finite, then `x.quantum` is the floating-point value with
-  /// positive sign and the same represented exponent as this value, but with a
-  /// significand of 1.0.
+  /// positive sign and the same represented (quantum) exponent as this value,
+  /// but with an integer significand of 1. For example:
+  ///
+  ///     let x = Decimal128("-1.2")!
+  ///     let y = Decimal128("-1.20")!
+  ///     x.quantum  // 0.1
+  ///     y.quantum  // 0.01
+  ///
   /// If `x` is infinite, then `x.quantum` is positive `infinity`.
   ///
   /// This property implements the `quantum` operation defined by the IEEE 754
@@ -113,9 +119,10 @@ extension Decimal128 {
   /// The result is rounded if needed to the nearest representable value
   /// with the requested quantum (ties to even).
   ///
-  /// For finite operands, the result has the same represented exponent as
-  /// `other` and the same sign as this value. If the requested exponent would
-  /// require a significand with more than 34 decimal digits, the result is NaN.
+  /// For finite operands, the result has the represented (quantum) exponent
+  /// `other.quantum.exponent` and the same sign as this value.
+  /// If the requested exponent would require an integer significand with
+  /// more than 34 decimal digits, the result is NaN.
   ///
   /// If both operands are infinite, the result is infinity with the sign of
   /// this value. If exactly one operand is infinite, the result is NaN.
@@ -139,9 +146,10 @@ extension Decimal128 {
   /// The result is rounded if needed to the nearest representable value
   /// with the requested quantum (ties to even).
   ///
-  /// For finite operands, the result has the same represented exponent as
-  /// `other` and the same sign as this value. If the requested exponent would
-  /// require a significand with more than 34 decimal digits, the result is NaN.
+  /// For finite operands, the result has the represented (quantum) exponent
+  /// `other.quantum.exponent` and the same sign as this value.
+  /// If the requested exponent would require an integer significand with
+  /// more than 34 decimal digits, the result is NaN.
   ///
   /// If both operands are infinite, the result is infinity with the sign of
   /// this value. If exactly one operand is infinite, the result is NaN.
@@ -166,9 +174,10 @@ extension Decimal128 {
   ///
   /// The result is rounded if needed using the given rounding rule.
   ///
-  /// For finite operands, the result has the same represented exponent as
-  /// `other` and the same sign as this value. If the requested exponent would
-  /// require a significand with more than 34 decimal digits, the result is NaN.
+  /// For finite operands, the result has the represented (quantum) exponent
+  /// `other.quantum.exponent` and the same sign as this value.
+  /// If the requested exponent would require an integer significand with
+  /// more than 34 decimal digits, the result is NaN.
   ///
   /// If both operands are infinite, the result is infinity with the sign of
   /// this value. If exactly one operand is infinite, the result is NaN.
@@ -195,9 +204,10 @@ extension Decimal128 {
   ///
   /// The result is rounded if needed using the given rounding rule.
   ///
-  /// For finite operands, the result has the same represented exponent as
-  /// `other` and the same sign as this value. If the requested exponent would
-  /// require a significand with more than 34 decimal digits, the result is NaN.
+  /// For finite operands, the result has the represented (quantum) exponent
+  /// `other.quantum.exponent` and the same sign as this value.
+  /// If the requested exponent would require an integer significand with
+  /// more than 34 decimal digits, the result is NaN.
   ///
   /// If both operands are infinite, the result is infinity with the sign of
   /// this value. If exactly one operand is infinite, the result is NaN.
@@ -225,9 +235,10 @@ extension Decimal128 {
   /// The result is rounded if needed to the nearest representable value
   /// with the requested quantum (ties to even).
   ///
-  /// For finite operands, the result has the same represented exponent as
-  /// `other` and the same sign as this value. If the requested exponent would
-  /// require a significand with more than 34 decimal digits, the result is NaN.
+  /// For finite operands, the result has the represented (quantum) exponent
+  /// `other.quantum.exponent` and the same sign as this value.
+  /// If the requested exponent would require an integer significand with
+  /// more than 34 decimal digits, the result is NaN.
   ///
   /// If both operands are infinite, the result is infinity with the sign of
   /// this value. If exactly one operand is infinite, the result is NaN.
@@ -245,9 +256,10 @@ extension Decimal128 {
   /// The result is rounded if needed to the nearest representable value
   /// with the requested quantum (ties to even).
   ///
-  /// For finite operands, the result has the same represented exponent as
-  /// `other` and the same sign as this value. If the requested exponent would
-  /// require a significand with more than 34 decimal digits, the result is NaN.
+  /// For finite operands, the result has the represented (quantum) exponent
+  /// `other.quantum.exponent` and the same sign as this value.
+  /// If the requested exponent would require an integer significand with
+  /// more than 34 decimal digits, the result is NaN.
   ///
   /// If both operands are infinite, the result is infinity with the sign of
   /// this value. If exactly one operand is infinite, the result is NaN.
@@ -268,9 +280,10 @@ extension Decimal128 {
   ///
   /// The result is rounded if needed using the given rounding rule.
   ///
-  /// For finite operands, the result has the same represented exponent as
-  /// `other` and the same sign as this value. If the requested exponent would
-  /// require a significand with more than 34 decimal digits, the result is NaN.
+  /// For finite operands, the result has the represented (quantum) exponent
+  /// `other.quantum.exponent` and the same sign as this value.
+  /// If the requested exponent would require an integer significand with
+  /// more than 34 decimal digits, the result is NaN.
   ///
   /// If both operands are infinite, the result is infinity with the sign of
   /// this value. If exactly one operand is infinite, the result is NaN.
@@ -291,9 +304,10 @@ extension Decimal128 {
   ///
   /// The result is rounded if needed using the given rounding rule.
   ///
-  /// For finite operands, the result has the same represented exponent as
-  /// `other` and the same sign as this value. If the requested exponent would
-  /// require a significand with more than 34 decimal digits, the result is NaN.
+  /// For finite operands, the result has the represented (quantum) exponent
+  /// `other.quantum.exponent` and the same sign as this value.
+  /// If the requested exponent would require an integer significand with
+  /// more than 34 decimal digits, the result is NaN.
   ///
   /// If both operands are infinite, the result is infinity with the sign of
   /// this value. If exactly one operand is infinite, the result is NaN.

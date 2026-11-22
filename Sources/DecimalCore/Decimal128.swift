@@ -96,9 +96,13 @@ extension Decimal128 {
 
   /// The 14-bit encoding of the value's exponent field.
   ///
-  /// This property is unadjusted by the exponent bias. In the case of
-  /// non-finite values, it excludes two leading bits of the combination field
-  /// and includes extra trailing bits.
+  /// This property is unadjusted by the type's exponent bias.
+  /// For a finite value `x` of type `Decimal128`, it is equivalent to
+  /// `UInt(x.quantum.exponent + 6176)`.
+  ///
+  /// When the two leading bits of the value's combination field are set,
+  /// as in the case of non-finite values, this property excludes those two
+  /// leading bits and includes two additional trailing bits.
   @inlinable
   public var exponentBitPattern: UInt {
     @inline(always) get {
@@ -113,8 +117,11 @@ extension Decimal128 {
   /// The 114-bit encoding of the value's concatenated significand field,
   /// including any implicit leading bit.
   ///
-  /// In the case of non-finite values, the implicit leading bit is always set:
-  /// for NaN values, this property includes the payload with extra leading
+  /// When the two leading bits of the value's combination field are set,
+  /// as in the case of non-finite values, this property explicitly sets
+  /// the leading bit of its 114-bit pattern.
+  ///
+  /// For NaN values, this property includes the payload with extra leading
   /// bits; for infinite values, it includes ignored bits.
   @inlinable
   public var significandBitPattern: UInt128 {
@@ -150,7 +157,9 @@ extension Decimal128 {
 
   /// Creates a new instance from the specified sign and bit patterns.
   ///
-  /// To create a non-finite value:
+  /// To create non-finite values (or some non-canonical zero values),
+  /// where the two leading bits of a value's combination field are set:
+  ///
   /// - set the implicit leading bit of the 114-bit pattern passed as
   ///   `significandBitPattern`; and
   /// - exclude two leading bits of the combination field and include extra
