@@ -133,7 +133,7 @@ extension Decimal128: FloatingPoint {
     let isSignMinus = (_sign == .minus) != significand._isSignMinus
     guard significand._isFiniteNonzero else {
       if significand.isSignalingNaN {
-        _signal(.invalid, into: &flags)
+        _raise(.invalid, in: &flags)
         self = significand._quiet._canonical
         return
       }
@@ -197,7 +197,7 @@ extension Decimal128: FloatingPoint {
           }
         c &+= nextAway ? 1 : 0
         // Every such inexact result is tiny before rounding.
-        _signal(.underflowInexact, into: &flags)
+        _raise(.underflowInexact, in: &flags)
       }
       e = 0
     } else if e > 12287 {
@@ -226,6 +226,7 @@ extension Decimal128: FloatingPoint {
       return
     }
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     self.init(
       _sign: sign,
       exponent: exponent,
@@ -322,6 +323,7 @@ extension Decimal128: FloatingPoint {
       return
     }
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     self.init(
       _sign: sign,
       exponent: exponent,
@@ -426,20 +428,20 @@ extension Decimal128: FloatingPoint {
 
     guard z.isFinite && x._isFiniteNonzero && y._isFiniteNonzero else {
       if z.isSignalingNaN {
-        _signal(.invalid, into: &flags)
+        _raise(.invalid, in: &flags)
         z = z._quiet
       }
       if x.isSignalingNaN {
-        _signal(.invalid, into: &flags)
+        _raise(.invalid, in: &flags)
         x = x._quiet
       }
       if y.isSignalingNaN {
-        _signal(.invalid, into: &flags)
+        _raise(.invalid, in: &flags)
         y = y._quiet
       }
       let invalid = (x.isZero && y.isInfinite) || (y.isZero && x.isInfinite)
       if invalid {
-        _signal(.invalid, into: &flags)
+        _raise(.invalid, in: &flags)
       }
       if z.isNaN { return z._canonical }
       if x.isNaN { return x._canonical }
@@ -449,7 +451,7 @@ extension Decimal128: FloatingPoint {
       if x.isInfinite || y.isInfinite {
         let isSignMinus = x._isSignMinus != y._isSignMinus
         if z.isInfinite && z._isSignMinus != isSignMinus {
-          _signal(.invalid, into: &flags)
+          _raise(.invalid, in: &flags)
           return .nan
         }
         return isSignMinus ? -.infinity : .infinity
@@ -516,7 +518,7 @@ extension Decimal128: FloatingPoint {
             if nextAway {
               if c == ._1e34 &- 1 {
                 if e == 12287 {
-                  _signal(.overflowInexact, into: &flags)
+                  _raise(.overflowInexact, in: &flags)
                   return sxy ? -.infinity : .infinity
                 }
                 c = ._1e33
@@ -561,9 +563,9 @@ extension Decimal128: FloatingPoint {
           }
           let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | c)
           if isTiny {
-            _signal(.underflowInexact, into: &flags)
+            _raise(.underflowInexact, in: &flags)
           } else {
-            _signal(.inexact, into: &flags)
+            _raise(.inexact, in: &flags)
           }
           return z._isSignMinus ? -abs : abs
         }
@@ -712,7 +714,7 @@ extension Decimal128: FloatingPoint {
         return ._overflow(isSignMinus: sxy, rule, &flags)
       }
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | quo)
-      _signal(.inexact, into: &flags)
+      _raise(.inexact, in: &flags)
       return sxy ? -abs : abs
     }
 
@@ -798,13 +800,13 @@ extension Decimal128: FloatingPoint {
           }
           if q == ._1e34 {
             if e == 12287 {
-              _signal(.overflowInexact, into: &flags)
+              _raise(.overflowInexact, in: &flags)
               return isSignMinus ? -.infinity : .infinity
             }
             q = ._1e33
             e &+= 1
           }
-          _signal(.inexact, into: &flags)
+          _raise(.inexact, in: &flags)
         }
         let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | q)
         return isSignMinus ? -abs : abs
@@ -949,6 +951,7 @@ extension Decimal128: FloatingPoint {
     _ lhs: Decimal128, _ rhs: Decimal128
   ) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     return _addingProduct(lhs, rhs, rounding: .toNearestOrEven, &flags)
   }
 
@@ -995,6 +998,7 @@ extension Decimal128: FloatingPoint {
     rounding rule: FloatingPointRoundingRule
   ) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     return _addingProduct(lhs, rhs, rounding: .init(rule), &flags)
   }
 
@@ -1104,11 +1108,11 @@ extension Decimal128: FloatingPoint {
 
     guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
       if lhs.isSignalingNaN {
-        _signal(.invalid, into: &flags)
+        _raise(.invalid, in: &flags)
         lhs = lhs._quiet
       }
       if rhs.isSignalingNaN {
-        _signal(.invalid, into: &flags)
+        _raise(.invalid, in: &flags)
         rhs = rhs._quiet
       }
       if lhs.isNaN {
@@ -1120,7 +1124,7 @@ extension Decimal128: FloatingPoint {
 
       if lhs.isInfinite {
         if rhs.isInfinite {
-          _signal(.invalid, into: &flags)
+          _raise(.invalid, in: &flags)
           return .nan
         }
         return isSignMinus ? -.infinity : .infinity
@@ -1132,10 +1136,10 @@ extension Decimal128: FloatingPoint {
 
       if rhs.isZero {
         if lhs.isZero {
-          _signal(.invalid, into: &flags)
+          _raise(.invalid, in: &flags)
           return .nan
         }
-        _signal(.divisionByZero, into: &flags)
+        _raise(.divisionByZero, in: &flags)
         return isSignMinus ? -.infinity : .infinity
       }
       let e = Int(lhs.exponentBitPattern) &- Int(rhs.exponentBitPattern) &+ 6176
@@ -1323,7 +1327,7 @@ extension Decimal128: FloatingPoint {
           fatalError("Unknown rounding rule.")
         }
       quo &+= nextAway ? 1 : 0
-      _signal(.inexact, into: &flags)
+      _raise(.inexact, in: &flags)
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | quo)
       return isSignMinus ? -abs : abs
     }
@@ -1352,7 +1356,7 @@ extension Decimal128: FloatingPoint {
     @unknown default:
       fatalError("Unknown rounding rule.")
     }
-    _signal(.underflowInexact, into: &flags)
+    _raise(.underflowInexact, in: &flags)
     let abs = Self(bitPattern: quo)
     return isSignMinus ? -abs : abs
   }
@@ -1372,6 +1376,7 @@ extension Decimal128: FloatingPoint {
   @inline(always)
   public static func / (lhs: Decimal128, rhs: Decimal128) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     return lhs._divided(by: rhs, rounding: .toNearestOrEven, &flags)
   }
 
@@ -1414,6 +1419,7 @@ extension Decimal128: FloatingPoint {
     rounding rule: FloatingPointRoundingRule
   ) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     return _divided(by: rhs, rounding: .init(rule), &flags)
   }
 
@@ -1513,11 +1519,11 @@ extension Decimal128: FloatingPoint {
     var x = self, y = divisor
     guard x._isFiniteNonzero && y._isFiniteNonzero else {
       if x.isSignalingNaN {
-        _signal(.invalid, into: &flags)
+        _raise(.invalid, in: &flags)
         x = x._quiet
       }
       if y.isSignalingNaN {
-        _signal(.invalid, into: &flags)
+        _raise(.invalid, in: &flags)
         y = y._quiet
       }
       if x.isNaN {
@@ -1528,7 +1534,7 @@ extension Decimal128: FloatingPoint {
       }
 
       if x.isInfinite || y.isZero {
-        _signal(.invalid, into: &flags)
+        _raise(.invalid, in: &flags)
         return .nan
       }
       if y.isInfinite {
@@ -1699,6 +1705,7 @@ extension Decimal128: FloatingPoint {
   @inline(always)
   public func remainder(dividingBy other: Decimal128) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     return _remainder(truncating: false, dividingBy: other, &flags)
   }
 
@@ -1766,6 +1773,7 @@ extension Decimal128: FloatingPoint {
   @inline(always)
   public func truncatingRemainder(dividingBy other: Decimal128) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     return _remainder(truncating: true, dividingBy: other, &flags)
   }
 
@@ -1831,12 +1839,12 @@ extension Decimal128: FloatingPoint {
   ) -> Decimal128 {
     guard _isFiniteNonzero else {
       if isNaN {
-        if isSignalingNaN { _signal(.invalid, into: &flags) }
+        if isSignalingNaN { _raise(.invalid, in: &flags) }
         return _quiet._canonical
       }
       if isInfinite {
         if _isSignMinus {
-          _signal(.invalid, into: &flags)
+          _raise(.invalid, in: &flags)
           return .nan
         }
         return .infinity
@@ -1847,7 +1855,7 @@ extension Decimal128: FloatingPoint {
       return _isSignMinus ? -abs : abs
     }
     if _isSignMinus {
-      _signal(.invalid, into: &flags)
+      _raise(.invalid, in: &flags)
       return .nan
     }
     var c = significandBitPattern
@@ -1944,7 +1952,7 @@ extension Decimal128: FloatingPoint {
         nonzeroSignificand: &estimate,
         boundedPreferredBiasedExponent: pe)
     } else {
-      _signal(.inexact, into: &flags)
+      _raise(.inexact, in: &flags)
       let nextAway: Bool =
         switch rule {
         case .toNearestOrEven, .toNearestOrAwayFromZero:
@@ -1977,6 +1985,7 @@ extension Decimal128: FloatingPoint {
   @inline(always)
   public func squareRoot() -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     return _squareRoot(rounding: .toNearestOrEven, &flags)
   }
 
@@ -2014,6 +2023,7 @@ extension Decimal128: FloatingPoint {
     rounding rule: FloatingPointRoundingRule
   ) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     return _squareRoot(rounding: .init(rule), &flags)
   }
 
@@ -2096,6 +2106,10 @@ extension Decimal128: FloatingPoint {
     _ rule: _DecimalFloatingPointRoundingRule
   ) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer {
+      flags.subtract(.inexact)
+      _signal(flags)
+    }
     return _rounded(rule, &flags)
   }
 
@@ -2159,7 +2173,7 @@ extension Decimal128: FloatingPoint {
   ) -> Decimal128 {
     guard _isFiniteNonzero else {
       if isSignalingNaN {
-        _signal(.invalid, into: &flags)
+        _raise(.invalid, in: &flags)
         return _quiet._canonical
       }
       if exponentBitPattern >= 6176 {
@@ -2213,7 +2227,7 @@ extension Decimal128: FloatingPoint {
       @unknown default:
         fatalError("Unknown rounding rule.")
       }
-      _signal(.inexact, into: &flags)
+      _raise(.inexact, in: &flags)
     }
     let abs = Self(bitPattern: 6176 &<< 113 | q)
     return isSignMinus ? -abs : abs

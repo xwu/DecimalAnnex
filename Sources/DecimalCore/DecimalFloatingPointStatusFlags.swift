@@ -91,9 +91,9 @@ internal func _signal(_: DecimalFloatingPointStatusFlags) {
 }
 
 @inlinable
-internal func _signal(
+internal func _raise(
   _ status: DecimalFloatingPointStatusFlags,
-  into flags: inout DecimalFloatingPointStatusFlags
+  in flags: inout DecimalFloatingPointStatusFlags
 ) {
   flags.formUnion(status)
 }

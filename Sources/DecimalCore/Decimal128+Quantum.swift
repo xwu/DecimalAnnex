@@ -13,6 +13,7 @@ extension Decimal128 {
   @inline(always)
   public var quantum: Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     return quantum(&flags)
   }
 
@@ -32,7 +33,7 @@ extension Decimal128 {
   ) -> Decimal128 {
     guard isFinite else {
       if isSignalingNaN {
-        _signal(.invalid, into: &flags)
+        _raise(.invalid, in: &flags)
         return _quiet._canonical
       }
       if isNaN {
@@ -56,11 +57,11 @@ extension Decimal128 {
   ) -> Decimal128 {
     guard isFinite && other.isFinite else {
       if isSignalingNaN {
-        _signal(.invalid, into: &flags)
+        _raise(.invalid, in: &flags)
         return _quiet._canonical
       }
       if other.isSignalingNaN {
-        _signal(.invalid, into: &flags)
+        _raise(.invalid, in: &flags)
         return other._quiet._canonical
       }
 
@@ -74,7 +75,7 @@ extension Decimal128 {
       if isInfinite && other.isInfinite {
         return _isSignMinus ? -.infinity : .infinity
       }
-      _signal(.invalid, into: &flags)
+      _raise(.invalid, in: &flags)
       return .nan
     }
     let oe = other.exponentBitPattern
@@ -88,7 +89,7 @@ extension Decimal128 {
     var c = significandBitPattern
     if n > 0 {
       guard unsafe n < 34 && c < ._exp10[unchecked: 34 &- n] else {
-        _signal(.invalid, into: &flags)
+        _raise(.invalid, in: &flags)
         return .nan
       }
       c &*= unsafe ._exp10[unchecked: n]
@@ -120,7 +121,7 @@ extension Decimal128 {
         @unknown default:
           fatalError("Unknown rounding rule.")
         }
-        _signal(.inexact, into: &flags)
+        _raise(.inexact, in: &flags)
       }
     }
     return Self(sign: sign, exponentBitPattern: oe, significandBitPattern: c)
@@ -147,6 +148,7 @@ extension Decimal128 {
   @inline(always)
   public func quantized(by other: Decimal128) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     return _quantized(by: other, rounding: .toNearestOrEven, &flags)
   }
 
@@ -203,6 +205,7 @@ extension Decimal128 {
     rounding rule: FloatingPointRoundingRule
   ) -> Decimal128 {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     return _quantized(by: other, rounding: .init(rule), &flags)
   }
 

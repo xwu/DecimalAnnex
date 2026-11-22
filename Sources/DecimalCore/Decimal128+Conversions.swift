@@ -151,7 +151,7 @@ extension Decimal128 {
           q = ._1e33
           e &+= 1
         }
-        _signal(.inexact, into: &flags)
+        _raise(.inexact, in: &flags)
       }
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | q)
       self = isSignMinus ? -abs : abs
@@ -214,6 +214,7 @@ extension Decimal128 {
   @inline(always)
   public init<T: BinaryInteger>(_ source: T) {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     self.init(source, _rounding: .toNearestOrEven, &flags)
   }
 
@@ -259,6 +260,7 @@ extension Decimal128 {
     rounding rule: FloatingPointRoundingRule
   ) {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     self.init(source, _rounding: .init(rule), &flags)
   }
 
@@ -394,11 +396,11 @@ extension Decimal128 {
       _Cox.short(m, e, precision: format.precision, emin: format.emin)
     guard d < ._1e34 && p >= -6176 && p <= 6111 else { return nil }
     if let inexact {
-      if inexact { _signal(.inexact, into: &flags) }
+      if inexact { _raise(.inexact, in: &flags) }
     } else {
       // This is a somewhat costly check.
       let u = _Cox.uscale(m, _Cox.prescale(e, -p))
-      if u != d &<< 2 { _signal(.inexact, into: &flags) }
+      if u != d &<< 2 { _raise(.inexact, in: &flags) }
     }
     self.init(
       sign: source.sign,
@@ -426,6 +428,7 @@ extension Decimal128 {
   @inline(always)
   public init(shortest source: Float16) {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     self.init(_shortest: source, &flags)!
   }
 
@@ -476,6 +479,7 @@ extension Decimal128 {
   @inline(always)
   public init(shortest source: Float) {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     self.init(_shortest: source, &flags)!
   }
 
@@ -525,6 +529,7 @@ extension Decimal128 {
   @inline(always)
   public init(shortest source: Double) {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     self.init(_shortest: source, &flags)!
   }
 
@@ -566,7 +571,7 @@ extension Decimal128 {
   ) {
     let format = T._format
     if source.isNaN {
-      if source.isSignalingNaN { _signal(.invalid, into: &flags) }
+      if source.isSignalingNaN { _raise(.invalid, in: &flags) }
 #if CompliantPayload
       // IEEE standard convention.
       let mask = ~T.nan.significandBitPattern
@@ -597,7 +602,7 @@ extension Decimal128 {
       _Cox.fixed(width: 34, isSignMinus: source.sign == .minus, m, e, rule)
     var biasedExponent = p &+ 6176
     if inexact {
-      _signal(.inexact, into: &flags)
+      _raise(.inexact, in: &flags)
     } else {
       Self._select(
         biasedExponent: &biasedExponent,
@@ -640,6 +645,7 @@ extension Decimal128 {
   @inline(always)
   public init<T: BinaryFloatingPoint>(nearest source: T) {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     self.init(_nearest: source, rounding: .toNearestOrEven, &flags)
   }
 
@@ -713,6 +719,7 @@ extension Decimal128 {
     rounding rule: FloatingPointRoundingRule
   ) {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     self.init(_nearest: source, rounding: .init(rule), &flags)
   }
 
@@ -1343,7 +1350,7 @@ extension Decimal128: LosslessStringConvertible {
       ) {
         if significand == ._1e34 &- 1 {
           if biasedExponent == 12287 {
-            _signal(.overflowInexact, into: &flags)
+            _raise(.overflowInexact, in: &flags)
             return isSignMinus ? -.infinity : .infinity
           }
           significand = ._1e33
@@ -1354,9 +1361,9 @@ extension Decimal128: LosslessStringConvertible {
       }
       // `isKnownTiny == true` for all *inexact* tiny values.
       if isKnownTiny {
-        _signal(.underflowInexact, into: &flags)
+        _raise(.underflowInexact, in: &flags)
       } else {
-        _signal(.inexact, into: &flags)
+        _raise(.inexact, in: &flags)
       }
     }
     let abs = Self(
@@ -1416,6 +1423,7 @@ extension Decimal128: LosslessStringConvertible {
   @inline(always)
   public init?<T: StringProtocol>(_ description: T) {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     self.init(description, _rounding: .toNearestOrEven, &flags)
   }
 
@@ -1482,6 +1490,7 @@ extension Decimal128: LosslessStringConvertible {
     rounding rule: FloatingPointRoundingRule
   ) {
     var flags: DecimalFloatingPointStatusFlags = []
+    defer { _signal(flags) }
     self.init(description, _rounding: .init(rule), &flags)
   }
 
