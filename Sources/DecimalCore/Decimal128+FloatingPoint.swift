@@ -109,6 +109,19 @@ extension Decimal128: FloatingPoint {
     return Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | c)
   }
 
+  // A failable, always-inlined fast path for canonical, finite values where
+  // the scaled exponent fits in the exponent field. Purely an optimization.
+  @inlinable
+  @inline(always)
+  internal init?(_sign: FloatingPointSign, exponent: Int, significand: Self) {
+    guard significand.significandBitPattern < ._1e34 else { return nil }
+    let e = significand.exponentBitPattern &+ UInt(bitPattern: exponent)
+    guard e <= 12287 else { return nil }
+    let x = UInt128(truncatingIfNeeded: exponent) &<< 113
+    let scaled = Self(bitPattern: significand.bitPattern &+ x)
+    self = _sign == .minus ? -scaled : scaled
+  }
+
   @usableFromInline
   internal init(
     _sign: FloatingPointSign,
@@ -208,6 +221,10 @@ extension Decimal128: FloatingPoint {
 
   @inline(always)
   public init(sign: FloatingPointSign, exponent: Int, significand: Decimal128) {
+    if let x = Self(_sign: sign, exponent: exponent, significand: significand) {
+      self = x
+      return
+    }
     var flags: DecimalFloatingPointStatusFlags = []
     self.init(
       _sign: sign,
@@ -252,6 +269,10 @@ extension Decimal128: FloatingPoint {
     significand: Decimal128,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) {
+    if let x = Self(_sign: sign, exponent: exponent, significand: significand) {
+      self = x
+      return
+    }
     self.init(
       _sign: sign,
       exponent: exponent,
@@ -293,6 +314,10 @@ extension Decimal128: FloatingPoint {
     significand: Decimal128,
     rounding rule: FloatingPointRoundingRule
   ) {
+    if let x = Self(_sign: sign, exponent: exponent, significand: significand) {
+      self = x
+      return
+    }
     var flags: DecimalFloatingPointStatusFlags = []
     self.init(
       _sign: sign,
@@ -339,6 +364,10 @@ extension Decimal128: FloatingPoint {
     rounding rule: FloatingPointRoundingRule,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) {
+    if let x = Self(_sign: sign, exponent: exponent, significand: significand) {
+      self = x
+      return
+    }
     self.init(
       _sign: sign,
       exponent: exponent,
