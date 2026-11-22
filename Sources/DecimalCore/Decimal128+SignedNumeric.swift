@@ -308,6 +308,36 @@ extension Decimal128: AdditiveArithmetic {
   ) -> Decimal128 {
     var lhs = self, rhs = rhs
 
+    // A fast path for certain 'everyday' values. Purely an optimization.
+    do {
+      let le = Int(truncatingIfNeeded: lhs.bitPattern &>> 113) & 0x3fff
+      let re = Int(truncatingIfNeeded: rhs.bitPattern &>> 113) & 0x3fff
+      let delta = le &- re
+      if (lhs.bitPattern | rhs.bitPattern) & ((1 &<< 113) &- 1) <= 0xffff_ffff
+        && max(le, re) <= 12287 && delta.magnitude <= 9
+      {
+        let x = Int64(UInt32(truncatingIfNeeded: lhs.bitPattern))
+        let y = Int64(UInt32(truncatingIfNeeded: rhs.bitPattern))
+        let x_ = lhs._isSignMinus ? 0 &- x : x
+        let y_ = rhs._isSignMinus ? 0 &- y : y
+        let (hi, lo) = delta < 0 ? (y_, x_) : (x_, y_)
+        let scale = unsafe Int64(
+          truncatingIfNeeded: UInt128._exp10[unchecked: Int(delta.magnitude)])
+        let sum = hi &* scale &+ lo
+        if sum != 0 {
+          return Self(
+            sign: sum < 0 ? .minus : .plus,
+            exponentBitPattern: UInt(min(le, re)),
+            significandBitPattern: UInt128(sum.magnitude))
+        }
+        let isSignMinus = lhs._isSignMinus == rhs._isSignMinus
+          ? lhs._isSignMinus
+          : rule == .down
+        let abs = Self(bitPattern: UInt128(min(le, re)) &<< 113)
+        return isSignMinus ? -abs : abs
+      }
+    }
+
     guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
       if lhs.isSignalingNaN {
         _raise(.invalid, in: &flags)
