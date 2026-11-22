@@ -523,37 +523,33 @@ extension Decimal128: Comparable {
       return lhs._isSignMinus ? .less : .greater
     }
 
-    if lhs._isSignMinus {
-      if !rhs._isSignMinus { return .less }
-      // For explanation, see `<`.
-      swap(&lhs, &rhs)
-    } else if rhs._isSignMinus {
-      return .greater
-    }
-
-    var n = Int(lhs.exponentBitPattern) - Int(rhs.exponentBitPattern)
-    if n == 0 {
-      // Equivalent finite nonzero values with the same exponent bit pattern
-      // must have the same overall bit pattern, in which case we've already
-      // taken the early exit above.
-      return lhs.significandBitPattern < rhs.significandBitPattern
+    let lse = UInt(truncatingIfNeeded: lhs.bitPattern &>> 113)
+    let rse = UInt(truncatingIfNeeded: rhs.bitPattern &>> 113)
+    // Test for matching sign and *non-matching* exponent; see `==` for more.
+    guard (lse ^ rse) &- 1 < 0x3fff else {
+      // Signed bit patterns order values with opposite signs correctly.
+      // For matching signs and exponents, they order the raw significands.
+      let lt =
+        Int128(bitPattern: lhs.bitPattern) < Int128(bitPattern: rhs.bitPattern)
+      // Reverse the ordering if both values are negative.
+      return lt != (Int128(bitPattern: lhs.bitPattern & rhs.bitPattern) < 0)
         ? .less
         : .greater
     }
-    var isSwapped = false
+
+    var n = Int(lse) - Int(rse)
+    let reverse = (n < 0) != lhs._isSignMinus
     if n < 0 {
-      // For explanation, see `<`.
       swap(&lhs, &rhs)
-      isSwapped = true
       n.negate()
     }
 
-    if n > 33 { return isSwapped ? .less : .greater }
+    if n > 33 { return reverse ? .less : .greater }
     let (lc, rc) = (lhs.significandBitPattern, rhs.significandBitPattern)
-    guard lc < rc else { return isSwapped ? .less : .greater }
+    guard lc < rc else { return reverse ? .less : .greater }
     let scaled = unsafe lc._multipliedFullWidth(by: ._exp10[unchecked: n])
     if scaled == (0, rc) { return .equivalent }
-    return isSwapped
+    return reverse
       ? scaled > (0, rc) ? .less : .greater
       : scaled < (0, rc) ? .less : .greater
   }
@@ -586,36 +582,31 @@ extension Decimal128: Comparable {
       return lhs._isSignMinus
     }
 
-    var lhs = lhs, rhs = rhs
-    if lhs._isSignMinus {
-      if !rhs._isSignMinus { return true }
-      // If operands are both negative, then swap and compare magnitudes (i.e.,
-      // if lhs < 0, rhs < 0, and lhs < rhs, then |rhs| < |lhs|).
-      // Since we won't be checking the sign again, it suffices just to swap
-      // the values themselves rather than actually computing their magnitudes.
-      swap(&lhs, &rhs)
-    } else if rhs._isSignMinus {
-      return false
+    let lse = UInt(truncatingIfNeeded: lhs.bitPattern &>> 113)
+    let rse = UInt(truncatingIfNeeded: rhs.bitPattern &>> 113)
+    // Test for matching sign and *non-matching* exponent; see `==` for more.
+    guard (lse ^ rse) &- 1 < 0x3fff else {
+      // Signed bit patterns order values with opposite signs correctly.
+      // For matching signs and exponents, they order the raw significands.
+      let lt =
+        Int128(bitPattern: lhs.bitPattern) < Int128(bitPattern: rhs.bitPattern)
+      // Reverse the ordering if both values are negative.
+      return lt != (Int128(bitPattern: lhs.bitPattern & rhs.bitPattern) < 0)
     }
 
-    var n = Int(lhs.exponentBitPattern) - Int(rhs.exponentBitPattern)
-    if n == 0 { return lhs.significandBitPattern < rhs.significandBitPattern }
-    // If necessary, swap operands to simplify the logic that follows, but we
-    // will need to remember that we did that.
-    var isSwapped = false
+    var lhs = lhs, rhs = rhs
+    var n = Int(lse) - Int(rse)
+    let reverse = (n < 0) != lhs._isSignMinus
     if n < 0 {
       swap(&lhs, &rhs)
-      isSwapped = true
       n.negate()
     }
 
-    // If lhs < rhs, then the exponent bit pattern of `lhs` cannot be more than
-    // 33 _greater_ than that of `rhs`.
-    if n > 33 { return isSwapped }
+    if n > 33 { return reverse }
     let (lc, rc) = (lhs.significandBitPattern, rhs.significandBitPattern)
-    guard lc < rc else { return isSwapped }
+    guard lc < rc else { return reverse }
     let scaled = unsafe lc._multipliedFullWidth(by: ._exp10[unchecked: n])
-    return isSwapped ? scaled > (0, rc) : scaled < (0, rc)
+    return reverse ? scaled > (0, rc) : scaled < (0, rc)
   }
 
   @inline(always)
