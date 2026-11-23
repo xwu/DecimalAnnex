@@ -533,6 +533,31 @@ extension Decimal128: Comparable {
   @inlinable
   internal func _compared(to other: Decimal128) -> _WeakOrdering? {
     var lhs = self, rhs = other
+
+    // Fast path comparing signed 64-bit integer significands
+    // at a common exponent when possible. Purely an optimization.
+    do {
+      let lc = lhs.bitPattern & (1 &<< 113 &- 1)
+      let rc = rhs.bitPattern & (1 &<< 113 &- 1)
+      let le = Int(truncatingIfNeeded: lhs.bitPattern &>> 113) & 0x3fff
+      let re = Int(truncatingIfNeeded: rhs.bitPattern &>> 113) & 0x3fff
+      let delta = le &- re
+      if (lc | rc) <= 0xffff_ffff
+        && max(le, re) <= 0x2fff && delta.magnitude <= 9
+      {
+        let x = Int64(truncatingIfNeeded: lc)
+        let y = Int64(truncatingIfNeeded: rc)
+        let x_ = lhs._isSignMinus ? 0 &- x : x
+        let y_ = rhs._isSignMinus ? 0 &- y : y
+        let (hi, lo) = delta < 0 ? (y_, x_) : (x_, y_)
+        let scale = unsafe Int64(
+          truncatingIfNeeded: UInt128._exp10[unchecked: abs(delta)])
+        let difference = hi &* scale &- lo
+        if difference == 0 { return .equivalent }
+        return (difference < 0) != (delta < 0) ? .less : .greater
+      }
+    }
+
     if lhs.bitPattern == rhs.bitPattern {
       if lhs.isNaN { return nil }
       return .equivalent
@@ -577,7 +602,8 @@ extension Decimal128: Comparable {
     }
 
     if n > 33 { return reverse ? .less : .greater }
-    let (lc, rc) = (lhs.significandBitPattern, rhs.significandBitPattern)
+    let (lc, rc) =
+      (lhs.bitPattern & (1 &<< 113 &- 1), rhs.bitPattern & (1 &<< 113 &- 1))
     guard lc < rc else { return reverse ? .less : .greater }
     let scaled = unsafe lc._multipliedFullWidth(by: ._exp10[unchecked: n])
     if scaled == (0, rc) { return .equivalent }
