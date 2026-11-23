@@ -395,6 +395,28 @@ extension Decimal128 {
 extension Decimal128: Equatable {
   @inlinable
   public static func == (lhs: Decimal128, rhs: Decimal128) -> Bool {
+    // Fast path comparing signed 64-bit integer significands
+    // at a common exponent when possible. Purely an optimization.
+    do {
+      let lc = lhs.bitPattern & (1 &<< 113 &- 1)
+      let rc = rhs.bitPattern & (1 &<< 113 &- 1)
+      let le = Int(truncatingIfNeeded: lhs.bitPattern &>> 113) & 0x3fff
+      let re = Int(truncatingIfNeeded: rhs.bitPattern &>> 113) & 0x3fff
+      let delta = le &- re
+      if (lc | rc) <= 0xffff_ffff
+        && max(le, re) <= 0x2fff && delta.magnitude <= 9
+      {
+        let x = Int64(truncatingIfNeeded: lc)
+        let y = Int64(truncatingIfNeeded: rc)
+        let x_ = lhs._isSignMinus ? 0 &- x : x
+        let y_ = rhs._isSignMinus ? 0 &- y : y
+        let (hi, lo) = delta < 0 ? (y_, x_) : (x_, y_)
+        let scale = unsafe Int64(
+          truncatingIfNeeded: UInt128._exp10[unchecked: abs(delta)])
+        return hi &* scale == lo
+      }
+    }
+
     if lhs.bitPattern == rhs.bitPattern {
       if lhs.isNaN {
         // `==` is a 'quiet predicate' per IEEE 754 §5.11.
@@ -443,7 +465,8 @@ extension Decimal128: Equatable {
 
     // Equivalent values cannot differ in exponent bit pattern by more than 33.
     if n > 33 { return false }
-    let (lc, rc) = (lhs.significandBitPattern, rhs.significandBitPattern)
+    let (lc, rc) =
+      (lhs.bitPattern & (1 &<< 113 &- 1), rhs.bitPattern & (1 &<< 113 &- 1))
     guard lc < rc else { return false }
     return unsafe lc._multipliedFullWidth(by: ._exp10[unchecked: n]) == (0, rc)
   }
@@ -565,6 +588,29 @@ extension Decimal128: Comparable {
 
   @inlinable
   public static func < (lhs: Decimal128, rhs: Decimal128) -> Bool {
+    // Fast path comparing signed 64-bit integer significands
+    // at a common exponent when possible. Purely an optimization.
+    do {
+      let lc = lhs.bitPattern & (1 &<< 113 &- 1)
+      let rc = rhs.bitPattern & (1 &<< 113 &- 1)
+      let le = Int(truncatingIfNeeded: lhs.bitPattern &>> 113) & 0x3fff
+      let re = Int(truncatingIfNeeded: rhs.bitPattern &>> 113) & 0x3fff
+      let delta = le &- re
+      if (lc | rc) <= 0xffff_ffff
+        && max(le, re) <= 0x2fff && delta.magnitude <= 9
+      {
+        let x = Int64(truncatingIfNeeded: lc)
+        let y = Int64(truncatingIfNeeded: rc)
+        let x_ = lhs._isSignMinus ? 0 &- x : x
+        let y_ = rhs._isSignMinus ? 0 &- y : y
+        let (hi, lo) = delta < 0 ? (y_, x_) : (x_, y_)
+        let scale = unsafe Int64(
+          truncatingIfNeeded: UInt128._exp10[unchecked: abs(delta)])
+        let difference = hi &* scale &- lo
+        return (delta < 0 ? 0 &- difference : difference) < 0
+      }
+    }
+
     if lhs.bitPattern == rhs.bitPattern {
       if lhs.isNaN {
         // `<` is a 'signaling predicate' per IEEE 754 §5.11.
@@ -612,7 +658,8 @@ extension Decimal128: Comparable {
     }
 
     if n > 33 { return reverse }
-    let (lc, rc) = (lhs.significandBitPattern, rhs.significandBitPattern)
+    let (lc, rc) =
+      (lhs.bitPattern & (1 &<< 113 &- 1), rhs.bitPattern & (1 &<< 113 &- 1))
     guard lc < rc else { return reverse }
     let scaled = unsafe lc._multipliedFullWidth(by: ._exp10[unchecked: n])
     return reverse ? scaled > (0, rc) : scaled < (0, rc)

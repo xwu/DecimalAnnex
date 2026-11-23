@@ -322,7 +322,7 @@ extension Decimal128: AdditiveArithmetic {
         let y_ = rhs._isSignMinus ? 0 &- y : y
         let (hi, lo) = delta < 0 ? (y_, x_) : (x_, y_)
         let scale = unsafe Int64(
-          truncatingIfNeeded: UInt128._exp10[unchecked: Int(delta.magnitude)])
+          truncatingIfNeeded: UInt128._exp10[unchecked: abs(delta)])
         let sum = hi &* scale &+ lo
         if sum != 0 {
           return Self(

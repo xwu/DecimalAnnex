@@ -485,7 +485,7 @@ extension Decimal128: FloatingPoint {
         if z._isSignMinus { cz64 = 0 &- cz64 }
         let (hi, lo) = delta < 0 ? (cz64, product1) : (product1, cz64)
         let scale = unsafe Int64(
-          truncatingIfNeeded: UInt128._exp10[unchecked: Int(delta.magnitude)])
+          truncatingIfNeeded: UInt128._exp10[unchecked: abs(delta)])
         let (product2, overflow2) = hi.multipliedReportingOverflow(by: scale)
         let (sum, overflow3) = product2.addingReportingOverflow(lo)
         if !overflow1 && !overflow2 && !overflow3 {
