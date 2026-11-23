@@ -1329,7 +1329,7 @@ extension Decimal128: FloatingPoint {
         n = estimate &+ (lt ? 34 : 33)
         dividend = x._multipliedFullWidth(by: lt ? ._1e34 : ._1e33)
       }
-      (quo, rem) = UInt128._quotientAndRemainder(
+      (quo, rem) = UInt128.__quotientAndRemainder(
         fullWidth: dividend, dividingBy: rc)
     }
     let pe = e // Hang on to the preferred exponent for later.

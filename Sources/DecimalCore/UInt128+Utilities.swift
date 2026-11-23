@@ -290,6 +290,80 @@ extension UInt128 {
 @available(anyAppleOS 26.0, *)
 extension UInt128 {
   // Division of a full-width dividend by a variable divisor
+  // using reciprocal-based long division, specialized to produce sufficient
+  // bits for a `Decimal128` integer significand in two 57-bit chunks.
+  @inlinable
+  internal static func __quotientAndRemainder(
+    fullWidth dividend: (high: Self, low: Self),
+    dividingBy divisor: Self
+  ) -> (quotient: Self, remainder: Self) {
+    precondition(dividend.high < divisor && divisor < ._1e34)
+    if divisor <= 0xffff_ffff /* UInt32.max */ {
+      let d = UInt64(truncatingIfNeeded: divisor)
+      var r = UInt64(truncatingIfNeeded: dividend.high)
+      var q = dividend.low
+      for _ in 0..<4 {
+        let x = r &<< 32 | UInt64(truncatingIfNeeded: q &>> 96)
+        let q_: UInt64
+        (q_, r) = x.quotientAndRemainder(dividingBy: d)
+        q = q &<< 32 | UInt128(q_)
+      }
+      return (q, UInt128(r))
+    }
+
+    // Normalize the divisor so that it's in `2**125 ..< 2**126`.
+    // Two leading zero bits balance precision of `dh` and `reciprocal` below.
+    let shift = divisor.leadingZeroBitCount &- 2
+    let divisor = divisor &<< shift
+    let high = (dividend.high &<< shift) | (dividend.low &>> (128 &- shift))
+    let low = dividend.low &<< shift
+
+    let dh = UInt64(truncatingIfNeeded: divisor &>> 64)
+    // Compute an underestimate of the scaled reciprocal `2**121 / (dh + 1)`.
+    var reciprocal = (UInt64.max / ((dh &>> 30) &+ 1)) &<< 27
+    // Note flooring division and `... &+ 1` in the denominator,
+    // both serving to bias the estimate downward.
+    //
+    // Now correct with a single Newton step.
+    let error: UInt128 = (1 &<< 121) &- UInt128(reciprocal) &* UInt128(dh &+ 1)
+    reciprocal &+= UInt64(truncatingIfNeeded: error &>> 32)
+      .multipliedFullWidth(by: reciprocal).high &>> 25
+
+    let mask: UInt128 = (1 &<< 57) &- 1
+    var q2: UInt64
+    var r2: UInt128
+    if high < (divisor &>> 14) {
+      q2 = 0
+      r2 = (high &<< 14) | (low &>> 114)
+    } else {
+      q2 = UInt64(truncatingIfNeeded: high &>> 64)
+        .multipliedFullWidth(by: reciprocal).high &>> 43
+      r2 = ((high &<< 14) | (low &>> 114)) &- UInt128(q2) &* divisor
+      if r2 >= divisor {
+        q2 &+= 1
+        r2 = r2 &- divisor
+      }
+    }
+    var q1 = UInt64(truncatingIfNeeded: r2 &>> 64)
+      .multipliedFullWidth(by: reciprocal).high
+    var r1 = ((r2 &<< 57) | ((low &>> 57) & mask)) &- UInt128(q1) &* divisor
+    if r1 >= divisor {
+      q1 &+= 1
+      r1 = r1 &- divisor
+    }
+    var q0 = UInt64(truncatingIfNeeded: r1 &>> 64)
+      .multipliedFullWidth(by: reciprocal).high
+    var r0 = ((r1 &<< 57) | (low & mask)) &- UInt128(q0) &* divisor
+    if r0 >= divisor {
+      q0 &+= 1
+      r0 = r0 &- divisor
+    }
+    return (
+      UInt128(q2) &<< 114 | UInt128(q1) &<< 57 | UInt128(q0),
+      r0 &>> shift)
+  }
+
+  // Division of a full-width dividend by a variable divisor
   // (cf. Knuth, Algorithm D; Möller and Granlund, 2011, Algorithm 4).
   @inlinable
   internal static func _quotientAndRemainder(
