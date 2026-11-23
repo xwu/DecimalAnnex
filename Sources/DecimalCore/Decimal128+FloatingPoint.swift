@@ -459,6 +459,43 @@ extension Decimal128: FloatingPoint {
   ) -> Decimal128 {
     var z = self, x = lhs, y = rhs
 
+    let sxy = x._isSignMinus != y._isSignMinus
+    let ez_ = Int(truncatingIfNeeded: z.bitPattern &>> 113) & 0x3fff
+    let ex  = Int(truncatingIfNeeded: x.bitPattern &>> 113) & 0x3fff
+    let ey  = Int(truncatingIfNeeded: y.bitPattern &>> 113) & 0x3fff
+    let exy = ex &+ ey &- 6176
+    let delta_ = exy &- ez_
+    let cz_ = z.bitPattern & (1 &<< 113 &- 1)
+    let cx  = x.bitPattern & (1 &<< 113 &- 1)
+    let cy  = y.bitPattern & (1 &<< 113 &- 1)
+
+    if (cz_ | cx | cy) <= 0x7fff_ffff_ffff_ffff /* Int64.max */
+      && max(ez_, ex, ey) <= 12287 && exy >= 0 && delta_.magnitude <= 18
+    {
+      var cz64 = Int64(truncatingIfNeeded: cz_)
+      let cx64 = Int64(truncatingIfNeeded: cx)
+      let cy64 = Int64(truncatingIfNeeded: cy)
+      var product1: Int64
+      let overflow1: Bool
+      (product1, overflow1) = cx64.multipliedReportingOverflow(by: cy64)
+      if sxy { product1 = 0 &- product1 }
+      if z._isSignMinus { cz64 = 0 &- cz64 }
+      let (hi, lo) = delta_ < 0 ? (cz64, product1) : (product1, cz64)
+      let scale = unsafe Int64(
+        truncatingIfNeeded: UInt128._exp10[unchecked: Int(delta_.magnitude)])
+      let (product2, overflow2) = hi.multipliedReportingOverflow(by: scale)
+      let (sum, overflow3) = product2.addingReportingOverflow(lo)
+      if !overflow1 && !overflow2 && !overflow3 {
+        let isSignMinus = sum == 0
+          ? (sxy == z._isSignMinus ? sxy : rule == .down)
+          : sum < 0
+        let abs =
+          Self(bitPattern: UInt128(truncatingIfNeeded: min(exy, ez_)) &<< 113
+            | UInt128(sum.magnitude))
+        return isSignMinus ? -abs : abs
+      }
+    }
+
     guard z.isFinite && x._isFiniteNonzero && y._isFiniteNonzero else {
       if z.isSignalingNaN {
         _raise(.invalid, in: &flags)
@@ -516,9 +553,7 @@ extension Decimal128: FloatingPoint {
 
     let ez = Int(z.exponentBitPattern)
     let cz = z.isZero ? 0 : z.significandBitPattern
-    let exy = Int(x.exponentBitPattern) &- 6176 &+ Int(y.exponentBitPattern)
     let cxy: (high: UInt128, low: UInt128)
-    let sxy = x._isSignMinus != y._isSignMinus
     let sameSign = sxy == z._isSignMinus
     if cz != 0 {
       let n = ez &- exy
@@ -566,8 +601,6 @@ extension Decimal128: FloatingPoint {
             case .toNearestOrEven, .toNearestOrAwayFromZero:
               if minDelta == 35 && c == ._1e33 && e != 0 {
                 let _5e33: UInt128 = ._1e34 &>> 1
-                let cx = x.significandBitPattern
-                let cy = y.significandBitPattern
                 nextToward = cx > _5e33 && cy > _5e33 &&
                   cx._multipliedFullWidth(by: cy) >
                     _5e33._multipliedFullWidth(by: ._1e34)
@@ -605,8 +638,6 @@ extension Decimal128: FloatingPoint {
       }
     }
 
-    let cx = x.significandBitPattern
-    let cy = y.significandBitPattern
     if cx <= 0xFFFF_FFFF_FFFF_FFFF && cy <= 0xFFFF_FFFF_FFFF_FFFF {
       let (hi, lo) =
         UInt64(truncatingIfNeeded: cx).multipliedFullWidth(

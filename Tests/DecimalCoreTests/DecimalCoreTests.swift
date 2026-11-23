@@ -406,6 +406,9 @@ struct DecimalCoreTests {
 
     #expect((1 as Decimal128).addingProduct(0, .infinity).isNaN)
 
+    x = Decimal128(UInt64.max)
+    #expect((0 as Decimal128).addingProduct(x, 1) == x)
+
     typealias Case = (
       z: String,
       x: String,
