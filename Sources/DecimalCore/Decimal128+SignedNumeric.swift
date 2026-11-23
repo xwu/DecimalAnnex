@@ -966,7 +966,13 @@ extension Decimal128: Numeric {
     var lhs = self, rhs = rhs
     let isSignMinus = lhs._isSignMinus != rhs._isSignMinus
 
-    guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
+    let le = Int(truncatingIfNeeded: lhs.bitPattern &>> 113) & 0x3fff
+    let re = Int(truncatingIfNeeded: rhs.bitPattern &>> 113) & 0x3fff
+    let lc = lhs.bitPattern & ((1 &<< 113) &- 1)
+    let rc = rhs.bitPattern & ((1 &<< 113) &- 1)
+    let lte = (lc | rc) <= 0xffff_ffff_ffff_ffff /* UInt64.max */
+    // Test whether both operands are finite and canonical.
+    guard max(le, re) <= 12287 && (lte || (lc < ._1e34 && rc < ._1e34)) else {
       if lhs.isSignalingNaN {
         _raise(.invalid, in: &flags)
         lhs = lhs._quiet
@@ -1004,11 +1010,10 @@ extension Decimal128: Numeric {
     }
 
     // Compute the intermediate result.
-    let e = Int(lhs.exponentBitPattern) &- 6176 &+ Int(rhs.exponentBitPattern)
-    let lc = lhs.significandBitPattern
-    let rc = rhs.significandBitPattern
+    // (Note that we admit canonical zero here.)
+    let e = le &+ re &- 6176
     let product: (high: UInt128, low: UInt128)
-    if lc <= 0xFFFF_FFFF_FFFF_FFFF && rc <= 0xFFFF_FFFF_FFFF_FFFF {
+    if lte {
       let (hi, lo) =
         UInt64(truncatingIfNeeded: lc).multipliedFullWidth(
           by: UInt64(truncatingIfNeeded: rc))
