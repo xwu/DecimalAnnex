@@ -470,7 +470,7 @@ extension Decimal128: FloatingPoint {
     let cy  = y.bitPattern & (1 &<< 113 &- 1)
 
     if (cz_ | cx | cy) <= 0x7fff_ffff_ffff_ffff /* Int64.max */
-      && max(ez_, ex, ey) <= 12287 && exy >= 0 && delta_.magnitude <= 18
+      && max(ez_, max(ex, ey)) <= 0x2fff && exy >= 0 && delta_.magnitude <= 18
     {
       var cz64 = Int64(truncatingIfNeeded: cz_)
       let cx64 = Int64(truncatingIfNeeded: cx)
@@ -486,12 +486,16 @@ extension Decimal128: FloatingPoint {
       let (product2, overflow2) = hi.multipliedReportingOverflow(by: scale)
       let (sum, overflow3) = product2.addingReportingOverflow(lo)
       if !overflow1 && !overflow2 && !overflow3 {
-        let isSignMinus = sum == 0
-          ? (sxy == z._isSignMinus ? sxy : rule == .down)
-          : sum < 0
-        let abs =
-          Self(bitPattern: UInt128(truncatingIfNeeded: min(exy, ez_)) &<< 113
-            | UInt128(sum.magnitude))
+        if sum != 0 {
+          return Self(
+            sign: sum < 0 ? .minus : .plus,
+            exponentBitPattern: UInt(min(exy, ez_)),
+            significandBitPattern: UInt128(sum.magnitude))
+        }
+        let isSignMinus = sxy == z._isSignMinus
+          ? sxy
+          : rule == .down
+        let abs = Self(bitPattern: UInt128(min(exy, ez_)) &<< 113)
         return isSignMinus ? -abs : abs
       }
     }

@@ -314,7 +314,7 @@ extension Decimal128: AdditiveArithmetic {
       let re = Int(truncatingIfNeeded: rhs.bitPattern &>> 113) & 0x3fff
       let delta = le &- re
       if (lhs.bitPattern | rhs.bitPattern) & ((1 &<< 113) &- 1) <= 0xffff_ffff
-        && max(le, re) <= 12287 && delta.magnitude <= 9
+        && max(le, re) <= 0x2fff && delta.magnitude <= 9
       {
         let x = Int64(UInt32(truncatingIfNeeded: lhs.bitPattern))
         let y = Int64(UInt32(truncatingIfNeeded: rhs.bitPattern))
@@ -972,7 +972,7 @@ extension Decimal128: Numeric {
     let rc = rhs.bitPattern & ((1 &<< 113) &- 1)
     let lte = (lc | rc) <= 0xffff_ffff_ffff_ffff /* UInt64.max */
     // Test whether both operands are finite and canonical.
-    guard max(le, re) <= 12287 && (lte || (lc < ._1e34 && rc < ._1e34)) else {
+    guard max(le, re) <= 0x2fff && (lte || (lc < ._1e34 && rc < ._1e34)) else {
       if lhs.isSignalingNaN {
         _raise(.invalid, in: &flags)
         lhs = lhs._quiet
