@@ -1288,111 +1288,47 @@ extension Decimal128: FloatingPoint {
         UInt128(q2) &* 100_000_000_000 &+
         UInt128(q3)
       rem = UInt128(x)
-    } else if lc >= rc {
-      let q, r: UInt128
-      if lc &- rc < rc {
-        (q, r) = (1, lc &- rc)
-      } else {
-        // Compute the high half of each significand.
-        let lh = UInt64(truncatingIfNeeded: lc &>> 64)
-        let rh = UInt64(truncatingIfNeeded: rc &>> 64)
-        // If the mathematical product `rh * (rh + 2)` exceeds `lh`, then
-        // `lh / rh` is either exactly the true flooring quotient or it
-        // overestimates by one.
-        //
-        // Since `lc < 10**34`, `lh <= 542_101_086_242_752`.
-        // Thus, `rh >= 23_283_064` satisfies the above inequality for all
-        // possible `lh`.
-        if rh >= 23_283_064 || rh &* (rh &+ 2) > lh {
-          var overestimate = UInt128(lh / rh)
-          // `overestimate` is either exact or off by 1.
-          var product = overestimate &* rc
-          if product > lc {
-            product &-= rc
-            overestimate &-= 1
-          }
-          (q, r) = (overestimate, lc &- product)
-        } else {
-          // Retain up to 64 significant bits of `lc`,
-          // shifting `rc` by the same amount.
-          let shift = max(0, 64 &- lc.leadingZeroBitCount)
-          let lh = UInt64(truncatingIfNeeded: lc &>> shift)
-          let rh = UInt64(truncatingIfNeeded: rc &>> shift)
-          if shift == 0 {
-            let q_ = lh / rh
-            (q, r) = (UInt128(q_), UInt128(lh &- q_ &* rh))
-          } else if rh >= 0x1_0000_0000 // Avoid overflow in the following product.
-              || rh &* (rh &+ 2) > lh {
-            var overestimate = UInt128(lh / rh)
-            var product = overestimate &* rc
-            if product > lc {
-              product &-= rc
-              overestimate &-= 1
-            }
-            (q, r) = (overestimate, lc &- product)
-          } else if rc <= 0xFFFF_FFFF_FFFF_FFFF /* UInt64.max */ {
-            (q, r) = lc.quotientAndRemainder(dividingBy: rc)
-          } else {
-            // Avoid less-than-ideal intrinsic performance,
-            // using `Double` to estimate.
-
-            // FIXME: Include an alternative implementation using integer math
-            // that leaves binary floating-point status flags unaffected which
-            // could be conditionally compiled in.
-            let x =
-              Double(UInt64(truncatingIfNeeded: lc &>> 64)) * 0x1p64
-                + Double(UInt64(truncatingIfNeeded: lc))
-            let y =
-              Double(UInt64(truncatingIfNeeded: rc &>> 64)) * 0x1p64
-                + Double(UInt64(truncatingIfNeeded: rc))
-            // Since the quotient is less than `2**49`, the integer part of the
-            // estimate needs at most one correction in either direction.
-            var q_ = UInt128(UInt64(x / y))
-            var p = q_ &* rc
-            if p > lc {
-              q_ &-= 1
-              p &-= rc
-            }
-            var r_ = lc &- p
-            if r_ >= rc {
-              q_ &+= 1
-              r_ &-= rc
-            }
-            (q, r) = (q_, r_)
-          }
-        }
-      }
-      if r == 0 {
-        if e >= 0 && e <= 12287 {
-          let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | q)
-          return isSignMinus ? -abs : abs
-        }
-        return ._pack(
-          isSignMinus: isSignMinus,
-          biasedExponent: e,
-          significand: (0, q),
-          rule,
-          &flags)
-      }
-      n = q < 10 ? 33 : 33 &- q._commonLogarithm
-      (quo, rem) = UInt128._quotientAndRemainder(
-        fullWidth: r._multipliedFullWidth(by1e: n), dividingBy: rc)
-      quo &+= unsafe q &* ._exp10[unchecked: n]
-    } else if lc >= ._1e33 {
-      n = 34
-      (quo, rem) = UInt128._quotientAndRemainder(
-        fullWidth: lc._multipliedFullWidth(by1e: n), dividingBy: rc)
     } else {
+      // Check the integer estimate before scaling.
+      if (lc | rc) > UInt64.max && lc >= rc {
+        let shift = max(0, 64 &- lc.leadingZeroBitCount)
+        let x = UInt64(truncatingIfNeeded: lc &>> shift)
+        let y = UInt64(truncatingIfNeeded: rc &>> shift)
+        if y != 0 {
+          let q = UInt128(x / y)
+          if q &* rc == lc {
+            if e >= 0 && e <= 12287 {
+              let abs =
+                Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | q)
+              return isSignMinus ? -abs : abs
+            }
+            return ._pack(
+              isSignMinus: isSignMinus,
+              biasedExponent: e,
+              significand: (0, q),
+              rule,
+              &flags)
+          }
+        }
+      }
+      // Choose `n` such that `10**33 <= (lc * 10**n / rc) < 10**34`.
+      //
       // See explanatory comment in `UInt128._commonLogarithm`.
       // Note that here we use a closer approximation.
-      let x = lc.leadingZeroBitCount &- rc.leadingZeroBitCount
-      let delta = (1233 &* (x &+ 1)) &>> 12
-      // Even though we underestimate `log10(2)`,
-      // `delta` may overestimate `floor(log10(rc/lc))`.
-      n = unsafe 33 &+ delta &+ (lc &* ._exp10[unchecked: delta] < rc ? 1 : 0)
-      let dividend = n <= 38
-        ? lc._multipliedFullWidth(by1e: n)
-        : (lc * ._exp10[n &- 34])._multipliedFullWidth(by: ._1e34)
+      let estimate =
+        (1233 &* (lc.leadingZeroBitCount &- rc.leadingZeroBitCount &+ 1)) &>> 12
+      let dividend: (high: UInt128, low: UInt128)
+      if estimate < 0 {
+        n = unsafe lc < rc &* ._exp10[unchecked: -estimate]
+          ? 34 &+ estimate
+          : 33 &+ estimate
+        dividend = lc._multipliedFullWidth(by1e: n)
+      } else {
+        let x = unsafe lc &* ._exp10[unchecked: estimate]
+        let lt = x < rc
+        n = estimate &+ (lt ? 34 : 33)
+        dividend = x._multipliedFullWidth(by: lt ? ._1e34 : ._1e33)
+      }
       (quo, rem) = UInt128._quotientAndRemainder(
         fullWidth: dividend, dividingBy: rc)
     }
