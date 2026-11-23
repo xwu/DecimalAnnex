@@ -231,7 +231,7 @@ struct DecimalCoreTests {
 
   @Test
   @available(anyAppleOS 26.0, *)
-  func testAddingZero() {
+  func testHash() {
     let x = Decimal128(
       _sign: .minus,
       combinationBitPattern: 6177 << 3,
@@ -240,9 +240,8 @@ struct DecimalCoreTests {
       _sign: .minus,
       combinationBitPattern: 6178 << 3,
       trailingSignificandBitPattern: 1)
-    #expect(
-      x._addingZeroWithLeastQuantum().bitPattern ==
-      y._addingZeroWithLeastQuantum().bitPattern)
+    #expect(x == y)
+    #expect(x.hashValue == y.hashValue)
   }
 
   @Test

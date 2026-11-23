@@ -474,48 +474,38 @@ extension Decimal128: Equatable {
 
 @available(anyAppleOS 26.0, *)
 extension Decimal128: Hashable {
-  /// Returns the result of adding +0 to the value using the default rounding
-  /// mode and without signaling any floating-point exceptions.
-  ///
-  /// The +0 operand is represented with the least possible exponent such that
-  /// the result is represented with the least possible exponent.
-  @inlinable
-  internal func _addingZeroWithLeastQuantum() -> Decimal128 {
-    guard _isFiniteNonzero else {
+  public func hash(into hasher: inout Hasher) {
+    let bits: UInt128
+    if !_isFiniteNonzero {
       if isNaN {
-        // Note that `mask` will clear the signaling bit, silencing sNaN.
+        // Preserve canonical payloads but clear the signaling bit.
         var mask: UInt128 = 0x3f000 &<< 110
-        // Preserve the payload (i.e., trailing significand bit pattern) only if
-        // it is canonical.
         if _trailingSignificandBitPattern < ._1e33 {
           mask |= 1 &<< 110 &- 1
         }
-        return Self(bitPattern: bitPattern & mask)
+        bits = bitPattern & mask
+      } else if isInfinite {
+        bits = bitPattern & (0x3e000 &<< 110)
+      } else {
+        bits = 0
       }
-      if isInfinite {
-        return Self(bitPattern: bitPattern & (0x3e000 &<< 110))
-      }
-      // The result of adding +0 to ±0 is +0 (using the default rounding mode).
-      return Self(bitPattern: 0)
+    } else {
+      var e = Int(truncatingIfNeeded: bitPattern &>> 113) & 0x3fff
+      var c = bitPattern & (1 &<< 113 &- 1)
+      Self._select(
+        biasedExponent: &e,
+        nonzeroSignificand: &c,
+        boundedPreferredBiasedExponent: 0x2fff)
+      bits = (bitPattern & (1 &<< 127)) | UInt128(e) &<< 113 | c
     }
-
-    var e = exponentBitPattern
-    guard e != 0 else { return self }
-    var c = significandBitPattern
-    let n = min(e, UInt(max(0, 33 &- c._commonLogarithm)))
-    if n != 0 {
-      c &*= unsafe ._exp10[unchecked: Int(n)]
-      e &-= n
-    }
-    return Self(sign: sign, exponentBitPattern: e, significandBitPattern: c)
-  }
-
-  @inlinable
-  public func hash(into hasher: inout Hasher) {
-    // By adding zero, we hash every representation of zero the same way, and
-    // we also obtain a consistent canonical representation for every number,
-    // whether finite or infinite. (Signaling NaNs are also quieted.)
-    hasher.combine(_addingZeroWithLeastQuantum().bitPattern)
+    let mask: UInt64 = (1 &<< 49) &- 1
+    // Pack the upper 15 and lower 49 bits into `a`.
+    let a = (UInt64(truncatingIfNeeded: bits &>> 64) & ~mask)
+      | (UInt64(truncatingIfNeeded: bits) & mask)
+    let b = UInt64(truncatingIfNeeded: bits &>> 49)
+    hasher.combine(a)
+    // We can skip the second combine if the intervening bits (in `b`) are zero.
+    if b != 0 { hasher.combine(b) }
   }
 }
 
