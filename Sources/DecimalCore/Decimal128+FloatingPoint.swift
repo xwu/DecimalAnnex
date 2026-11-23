@@ -1198,6 +1198,53 @@ extension Decimal128: FloatingPoint {
         &flags)
     }
 
+    // Fast path for integer significands that fit in 64 bits.
+    if (lc | rc) <= 0xffff_ffff_ffff_ffff /* UInt64.max */ {
+      let x = UInt64(truncatingIfNeeded: lc)
+      let y = UInt64(truncatingIfNeeded: rc)
+      let q = x / y
+      if x &- q &* y == 0 && UInt(bitPattern: e) <= 12287 {
+        let abs = Self(bitPattern: UInt128(e) &<< 113 | UInt128(q))
+        return isSignMinus ? -abs : abs
+      }
+      let ctz1 = y.trailingZeroBitCount
+      var y_ = y &>> ctz1
+      var fives1 = 0
+      while y_ % 5 == 0 {
+        y_ /= 5
+        fives1 &+= 1
+      }
+      // Now, `y = (2 ** ctz1) * (5 ** fives1) * y_`,
+      // where `y_` and 10 are co-prime.
+      //
+      // The decimal expansion of `x / y` terminates exactly
+      // when `y_` divides `x`.
+      if x % y_ == 0 {
+        let ctz2 = x.trailingZeroBitCount
+        var x_ = x
+        var fives2 = 0
+        while x_ % 5 == 0 {
+          x_ /= 5
+          fives2 &+= 1
+        }
+        let digitCount = max(ctz1 &- ctz2, fives1 &- fives2)
+        if digitCount <= 19 {
+          let digitCount_ = max(0, digitCount)
+          let scale = unsafe UInt64(
+            truncatingIfNeeded: UInt128._exp10[unchecked: digitCount_])
+          let overflow: Bool
+          (x_, overflow) = x.multipliedReportingOverflow(by: scale)
+          // Since we may fall through, we won't mutate `e` itself.
+          let e_ = e &- digitCount_
+          if !overflow && UInt(bitPattern: e_) <= 12287 {
+            let q = x_ / y
+            let abs = Self(bitPattern: UInt128(e_) &<< 113 | UInt128(q))
+            return isSignMinus ? -abs : abs
+          }
+        }
+      }
+    }
+
     let n: Int
     var quo: UInt128
     let rem: UInt128
@@ -1206,6 +1253,41 @@ extension Decimal128: FloatingPoint {
     if unsafe ctz <= 33 && rc == ._exp10[unchecked: ctz] {
       n = ctz
       (quo, rem) = (lc, 0)
+    } else if rc <= 18446744 /* UInt64.max / 1_000_000_000_000 */
+      && lc < UInt128(UInt64(truncatingIfNeeded: rc) &* 1_000_000_000_000)
+    {
+      // For a sufficiently small `rc`, compute the 34-digit quotient using
+      // three 64-bit divisions.
+      var x = UInt64(truncatingIfNeeded: lc)
+      let y = UInt64(truncatingIfNeeded: rc)
+      // See explanatory comment in `UInt128._commonLogarithm`.
+      // Note that here we use a closer approximation.
+      let estimate =
+        (1233 &* (x.leadingZeroBitCount &- y.leadingZeroBitCount &+ 1)) &>> 12
+
+      // First, scale the numerator just enough for 12 quotient digits.
+      var n_ = max(0, 11 &+ estimate)
+      x &*= unsafe UInt64(truncatingIfNeeded: UInt128._exp10[unchecked: n_])
+      let _1e11: UInt64 = 100_000_000_000
+      if x < y &* _1e11 {
+        n_ &+= 1
+        x &*= 10
+      }
+      let q1: UInt64
+      (q1, x) = x.quotientAndRemainder(dividingBy: y)
+      // Multiply the remainder by `10**11` and divide for 11 quotient digits.
+      let q2: UInt64
+      (q2, x) = (x &* _1e11).quotientAndRemainder(dividingBy: y)
+      // Again.
+      let q3: UInt64
+      (q3, x) = (x &* _1e11).quotientAndRemainder(dividingBy: y)
+
+      n = n_ &+ 22
+      quo =
+        UInt128(q1) &* 10_000_000_000_000_000_000_000 &+
+        UInt128(q2) &* 100_000_000_000 &+
+        UInt128(q3)
+      rem = UInt128(x)
     } else if lc >= rc {
       let q, r: UInt128
       if lc &- rc < rc {
