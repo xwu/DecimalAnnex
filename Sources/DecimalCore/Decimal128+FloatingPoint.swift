@@ -459,48 +459,56 @@ extension Decimal128: FloatingPoint {
   ) -> Decimal128 {
     var z = self, x = lhs, y = rhs
 
-    let sxy = x._isSignMinus != y._isSignMinus
-    let ez_ = Int(truncatingIfNeeded: z.bitPattern &>> 113) & 0x3fff
-    let ex  = Int(truncatingIfNeeded: x.bitPattern &>> 113) & 0x3fff
-    let ey  = Int(truncatingIfNeeded: y.bitPattern &>> 113) & 0x3fff
+    let cx = x.bitPattern & (1 &<< 113 &- 1)
+    let cy = y.bitPattern & (1 &<< 113 &- 1)
+    let ex = Int(truncatingIfNeeded: x.bitPattern &>> 113) & 0x3fff
+    let ey = Int(truncatingIfNeeded: y.bitPattern &>> 113) & 0x3fff
     let exy = ex &+ ey &- 6176
-    let delta_ = exy &- ez_
-    let cz_ = z.bitPattern & (1 &<< 113 &- 1)
-    let cx  = x.bitPattern & (1 &<< 113 &- 1)
-    let cy  = y.bitPattern & (1 &<< 113 &- 1)
+    let sxy = x._isSignMinus != y._isSignMinus
 
-    if (cz_ | cx | cy) <= 0x7fff_ffff_ffff_ffff /* Int64.max */
-      && max(ez_, max(ex, ey)) <= 0x2fff && exy >= 0 && delta_.magnitude <= 18
-    {
-      var cz64 = Int64(truncatingIfNeeded: cz_)
-      let cx64 = Int64(truncatingIfNeeded: cx)
-      let cy64 = Int64(truncatingIfNeeded: cy)
-      var product1: Int64
-      let overflow1: Bool
-      (product1, overflow1) = cx64.multipliedReportingOverflow(by: cy64)
-      if sxy { product1 = 0 &- product1 }
-      if z._isSignMinus { cz64 = 0 &- cz64 }
-      let (hi, lo) = delta_ < 0 ? (cz64, product1) : (product1, cz64)
-      let scale = unsafe Int64(
-        truncatingIfNeeded: UInt128._exp10[unchecked: Int(delta_.magnitude)])
-      let (product2, overflow2) = hi.multipliedReportingOverflow(by: scale)
-      let (sum, overflow3) = product2.addingReportingOverflow(lo)
-      if !overflow1 && !overflow2 && !overflow3 {
-        if sum != 0 {
-          return Self(
-            sign: sum < 0 ? .minus : .plus,
-            exponentBitPattern: UInt(min(exy, ez_)),
-            significandBitPattern: UInt128(sum.magnitude))
+    // A fast path for certain 'everyday' values. Purely an optimization.
+    do {
+      let cz = z.bitPattern & (1 &<< 113 &- 1)
+      let ez = Int(truncatingIfNeeded: z.bitPattern &>> 113) & 0x3fff
+      let delta = exy &- ez
+
+      if (cz | cx | cy) <= 0x7fff_ffff_ffff_ffff /* Int64.max */
+          && max(ez, max(ex, ey)) <= 0x2fff && exy >= 0 && delta.magnitude <= 18
+      {
+        var cz64 = Int64(truncatingIfNeeded: cz)
+        let cx64 = Int64(truncatingIfNeeded: cx)
+        let cy64 = Int64(truncatingIfNeeded: cy)
+        var product1: Int64
+        let overflow1: Bool
+        (product1, overflow1) = cx64.multipliedReportingOverflow(by: cy64)
+        if sxy { product1 = 0 &- product1 }
+        if z._isSignMinus { cz64 = 0 &- cz64 }
+        let (hi, lo) = delta < 0 ? (cz64, product1) : (product1, cz64)
+        let scale = unsafe Int64(
+          truncatingIfNeeded: UInt128._exp10[unchecked: Int(delta.magnitude)])
+        let (product2, overflow2) = hi.multipliedReportingOverflow(by: scale)
+        let (sum, overflow3) = product2.addingReportingOverflow(lo)
+        if !overflow1 && !overflow2 && !overflow3 {
+          if sum != 0 {
+            return Self(
+              sign: sum < 0 ? .minus : .plus,
+              exponentBitPattern: UInt(min(exy, ez)),
+              significandBitPattern: UInt128(sum.magnitude))
+          }
+          let isSignMinus = sxy == z._isSignMinus
+            ? sxy
+            : rule == .down
+          let abs = Self(bitPattern: UInt128(min(exy, ez)) &<< 113)
+          return isSignMinus ? -abs : abs
         }
-        let isSignMinus = sxy == z._isSignMinus
-          ? sxy
-          : rule == .down
-        let abs = Self(bitPattern: UInt128(min(exy, ez_)) &<< 113)
-        return isSignMinus ? -abs : abs
       }
     }
 
-    guard z.isFinite && x._isFiniteNonzero && y._isFiniteNonzero else {
+    let lte = (cx | cy) <= 0xffff_ffff_ffff_ffff /* UInt64.max */
+    guard z.isFinite /* && x._isFiniteNonzero && y._isFiniteNonzero */
+      && max(ex, ey) <= 0x2fff && cx != 0 && cy != 0
+      && (lte || (cx < ._1e34 && cy < ._1e34))
+    else {
       if z.isSignalingNaN {
         _raise(.invalid, in: &flags)
         z = z._quiet
@@ -534,7 +542,7 @@ extension Decimal128: FloatingPoint {
         return z._canonical
       }
 
-      // `b.isZero || c.isZero`.
+      // `x.isZero || y.isZero`.
       var ez = Int(z.exponentBitPattern)
       let e_ =
         min(ez, Int(x.exponentBitPattern) &- 6176 &+ Int(y.exponentBitPattern))
@@ -556,7 +564,8 @@ extension Decimal128: FloatingPoint {
     }
 
     let ez = Int(z.exponentBitPattern)
-    let cz = z.isZero ? 0 : z.significandBitPattern
+    var cz = z.significandBitPattern
+    if cz >= ._1e34 { cz = 0 }
     let cxy: (high: UInt128, low: UInt128)
     let sameSign = sxy == z._isSignMinus
     if cz != 0 {
@@ -642,7 +651,7 @@ extension Decimal128: FloatingPoint {
       }
     }
 
-    if cx <= 0xFFFF_FFFF_FFFF_FFFF && cy <= 0xFFFF_FFFF_FFFF_FFFF {
+    if lte {
       let (hi, lo) =
         UInt64(truncatingIfNeeded: cx).multipliedFullWidth(
           by: UInt64(truncatingIfNeeded: cy))
@@ -677,24 +686,19 @@ extension Decimal128: FloatingPoint {
       let cz_ = n_ == 0
         ? (high: 0, low: cz)
         : unsafe cz._multipliedFullWidth(by: ._exp10[unchecked: n_])
-      if sameSign {
-        let carry: Bool
-        (c.low, carry) = cxy.low.addingReportingOverflow(cz_.low)
-        c.high = cxy.high &+ cz_.high &+ (carry ? 1 : 0)
-        isSignMinus = sxy
-      } else if cxy >= cz_ {
-        let borrow: Bool
-        (c.low, borrow) = cxy.low.subtractingReportingOverflow(cz_.low)
-        c.high = cxy.high &- cz_.high &- (borrow ? 1 : 0)
-        isSignMinus = c == (0, 0)
-          ? rule == .down // Exact zero. See IEEE 754 §6.3.
-          : sxy
-      } else {
-        let borrow: Bool
-        (c.low, borrow) = cz_.low.subtractingReportingOverflow(cxy.low)
-        c.high = cz_.high &- cxy.high &- (borrow ? 1 : 0)
-        isSignMinus = z._isSignMinus
+      // Compute `cxy + cz_` if same sign,
+      // or `abs(cxy - cz_) = abs(~(~cxy + cz_))` if not.
+      let mask: UInt128 = sameSign ? 0 : .max
+      let carry: Bool
+      (c.low, carry) = (cxy.low ^ mask).addingReportingOverflow(cz_.low)
+      c.low ^= mask
+      c.high = ((cxy.high ^ mask) &+ cz_.high &+ (carry ? 1 : 0)) ^ mask
+      let complement = Int128(bitPattern: c.high) < 0
+      if complement {
+        c.high = ~c.high &+ (c.low == 0 ? 1 : 0)
+        c.low = 0 &- c.low
       }
+      isSignMinus = c == (0, 0) ? rule == .down : sxy != complement
       return ._pack(
         isSignMinus: isSignMinus,
         biasedExponent: exy,
