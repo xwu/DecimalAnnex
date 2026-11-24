@@ -189,16 +189,16 @@ extension _Cox {
     _ rule: _DecimalFloatingPointRoundingRule
   ) -> (d: UInt128, p: Int, inexact: Bool) {
     assert(m & (1 &<< 127) != 0 && (1...34).contains(width))
-    var p = width &- 1 &- log10pow2(e &+ 127)
-    var u = uscale(m, prescale(e, p))
-    if unsafe round(
-      isSignMinus: isSignMinus, u, rule
-    ) >= ._exp10[unchecked: width] {
-      let (q, r) = u.quotientAndRemainder(dividingBy: 10)
-      u = q | (r != 0 ? 1 : 0) | (u & 1)
-      p &-= 1
+    let p = width &- 1 &- log10pow2(e &+ 127)
+    let u = uscale(m, prescale(e, p))
+    let d = round(isSignMinus: isSignMinus, u, rule)
+    if unsafe d < ._exp10[unchecked: width] {
+      return (d, -p, u & 3 != 0)
     }
-    return (round(isSignMinus: isSignMinus, u, rule), -p, u & 3 != 0)
+
+    let (q, r) = u.quotientAndRemainder(dividingBy: 10)
+    let u_ = q | (r != 0 ? 1 : 0) | (u & 1)
+    return (round(isSignMinus: isSignMinus, u_, rule), 1 &- p, u_ & 3 != 0)
   }
 
   @inlinable
