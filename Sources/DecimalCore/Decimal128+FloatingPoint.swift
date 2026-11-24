@@ -1607,6 +1607,38 @@ extension Decimal128: FloatingPoint {
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
     var x = self, y = divisor
+
+    // A fast path for certain 'everyday' values. Purely an optimization.
+    do {
+      let cx = x.bitPattern & ((1 &<< 113) &- 1)
+      let cy = y.bitPattern & ((1 &<< 113) &- 1)
+      let ex = Int(truncatingIfNeeded: x.bitPattern &>> 113) & 0x3fff
+      let ey = Int(truncatingIfNeeded: y.bitPattern &>> 113) & 0x3fff
+      let delta = ex &- ey
+      if (cx | cy) <= 0xffff_ffff_ffff_ffff /* UInt64.max */
+        && max(ex, ey) <= 0x2fff && delta.magnitude <= 19 && cy != 0
+      {
+        let cx64 = UInt64(truncatingIfNeeded: cx)
+        let cy64 = UInt64(truncatingIfNeeded: cy)
+        let scale = unsafe UInt64(
+          truncatingIfNeeded: UInt128._exp10[unchecked: abs(delta)])
+        let (scaled, overflow) = (delta < 0 ? cy64 : cx64)
+          .multipliedReportingOverflow(by: scale)
+        if !overflow {
+          let a = delta < 0 ? cx64 : scaled
+          let b = delta < 0 ? scaled : cy64
+          let (q, r) = a.quotientAndRemainder(dividingBy: b)
+          let complement = b &- r
+          // At the midpoint, take the complement only for an odd quotient.
+          let adjust = !truncating && r &+ (q & 1) > complement
+          return Self(
+            sign: x._isSignMinus != adjust ? .minus : .plus,
+            exponentBitPattern: UInt(min(ex, ey)),
+            significandBitPattern: UInt128(adjust ? complement : r))
+        }
+      }
+    }
+
     guard x._isFiniteNonzero && y._isFiniteNonzero else {
       if x.isSignalingNaN {
         _raise(.invalid, in: &flags)
