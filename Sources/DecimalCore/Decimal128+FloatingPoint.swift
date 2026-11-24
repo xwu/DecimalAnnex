@@ -459,8 +459,10 @@ extension Decimal128: FloatingPoint {
   ) -> Decimal128 {
     var z = self, x = lhs, y = rhs
 
+    // See `significandBitPattern`:
     let cx = x.bitPattern & (1 &<< 113 &- 1)
     let cy = y.bitPattern & (1 &<< 113 &- 1)
+    // See `exponentBitPattern`:
     let ex = Int(truncatingIfNeeded: x.bitPattern &>> 113) & 0x3fff
     let ey = Int(truncatingIfNeeded: y.bitPattern &>> 113) & 0x3fff
     let exy = ex &+ ey &- 6176
@@ -473,7 +475,8 @@ extension Decimal128: FloatingPoint {
       let delta = exy &- ez
 
       if (cz | cx | cy) <= 0x7fff_ffff_ffff_ffff /* Int64.max */
-          && max(ez, max(ex, ey)) <= 0x2fff && exy >= 0 && delta.magnitude <= 18
+        && max(ez, max(ex, ey)) <= 0x2fff // No combination field starts `0b11...`.
+        && exy >= 0 && delta.magnitude <= 18
       {
         var cz64 = Int64(truncatingIfNeeded: cz)
         let cx64 = Int64(truncatingIfNeeded: cx)
@@ -506,7 +509,8 @@ extension Decimal128: FloatingPoint {
 
     let lte = (cx | cy) <= 0xffff_ffff_ffff_ffff /* UInt64.max */
     guard z.isFinite /* && x._isFiniteNonzero && y._isFiniteNonzero */
-      && max(ex, ey) <= 0x2fff && cx != 0 && cy != 0
+      && max(ex, ey) <= 0x2fff
+      && cx != 0 && cy != 0
       && (lte || (cx < ._1e34 && cy < ._1e34))
     else {
       if z.isSignalingNaN {
@@ -1610,13 +1614,16 @@ extension Decimal128: FloatingPoint {
 
     // A fast path for certain 'everyday' values. Purely an optimization.
     do {
+      // See `significandBitPattern`:
       let cx = x.bitPattern & ((1 &<< 113) &- 1)
       let cy = y.bitPattern & ((1 &<< 113) &- 1)
+      // See `exponentBitPattern`:
       let ex = Int(truncatingIfNeeded: x.bitPattern &>> 113) & 0x3fff
       let ey = Int(truncatingIfNeeded: y.bitPattern &>> 113) & 0x3fff
       let delta = ex &- ey
       if (cx | cy) <= 0xffff_ffff_ffff_ffff /* UInt64.max */
-        && max(ex, ey) <= 0x2fff && delta.magnitude <= 19 && cy != 0
+        && max(ex, ey) <= 0x2fff // Neither combination field starts `0b11...`.
+        && delta.magnitude <= 19 && cy != 0
       {
         let cx64 = UInt64(truncatingIfNeeded: cx)
         let cy64 = UInt64(truncatingIfNeeded: cy)

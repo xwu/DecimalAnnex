@@ -398,13 +398,16 @@ extension Decimal128: Equatable {
     // Fast path comparing signed 64-bit integer significands
     // at a common exponent when possible. Purely an optimization.
     do {
+      // See `significandBitPattern`:
       let lc = lhs.bitPattern & (1 &<< 113 &- 1)
       let rc = rhs.bitPattern & (1 &<< 113 &- 1)
+      // See `exponentBitPattern`:
       let le = Int(truncatingIfNeeded: lhs.bitPattern &>> 113) & 0x3fff
       let re = Int(truncatingIfNeeded: rhs.bitPattern &>> 113) & 0x3fff
       let delta = le &- re
       if (lc | rc) <= 0xffff_ffff
-        && max(le, re) <= 0x2fff && delta.magnitude <= 9
+        && max(le, re) <= 0x2fff // Neither combination field starts `0b11...`.
+        && delta.magnitude <= 9
       {
         let x = Int64(truncatingIfNeeded: lc)
         let y = Int64(truncatingIfNeeded: rc)
@@ -479,13 +482,16 @@ extension Decimal128: Hashable {
     if !_isFiniteNonzero {
       bits = !isFinite ? _canonical.bitPattern : 0
     } else {
-      // Prefer the cohort member with 14 raw significand digits when possible.
-      // Also, prefer a cohort member with 15 raw significand digits if it
-      // fits in 49 bits (see below).
+      // Prefer the cohort member with 14 integer significand digits.
+      // Also, prefer a cohort member with 15 integer significand digits
+      // *if* it fits in 49 bits (see below).
       //
-      // Otherwise, prefer the cohort member with 34 raw significand digits.
-      var e = Int(truncatingIfNeeded: bitPattern &>> 113) & 0x3fff
+      // Otherwise, prefer the cohort member with 34 integer significand digits.
+
+      // See `significandBitPattern`:
       var c = bitPattern & (1 &<< 113 &- 1)
+      // See `exponentBitPattern`:
+      var e = Int(truncatingIfNeeded: bitPattern &>> 113) & 0x3fff
       if c < 0x2_0000_0000_0000 /* 2**49 */ {
         if c < 100_000_000_000_000 {
           let n = min(e, 13 &- c._commonLogarithm)
@@ -559,13 +565,16 @@ extension Decimal128: Comparable {
     // Fast path comparing signed 64-bit integer significands
     // at a common exponent when possible. Purely an optimization.
     do {
+      // See `significandBitPattern`:
       let lc = lhs.bitPattern & (1 &<< 113 &- 1)
       let rc = rhs.bitPattern & (1 &<< 113 &- 1)
+      // See `exponentBitPattern`:
       let le = Int(truncatingIfNeeded: lhs.bitPattern &>> 113) & 0x3fff
       let re = Int(truncatingIfNeeded: rhs.bitPattern &>> 113) & 0x3fff
       let delta = le &- re
       if (lc | rc) <= 0xffff_ffff
-        && max(le, re) <= 0x2fff && delta.magnitude <= 9
+        && max(le, re) <= 0x2fff // Neither combination field starts `0b11...`.
+        && delta.magnitude <= 9
       {
         let x = Int64(truncatingIfNeeded: lc)
         let y = Int64(truncatingIfNeeded: rc)
@@ -639,13 +648,16 @@ extension Decimal128: Comparable {
     // Fast path comparing signed 64-bit integer significands
     // at a common exponent when possible. Purely an optimization.
     do {
+      // See `significandBitPattern`:
       let lc = lhs.bitPattern & (1 &<< 113 &- 1)
       let rc = rhs.bitPattern & (1 &<< 113 &- 1)
+      // See `exponentBitPattern`:
       let le = Int(truncatingIfNeeded: lhs.bitPattern &>> 113) & 0x3fff
       let re = Int(truncatingIfNeeded: rhs.bitPattern &>> 113) & 0x3fff
       let delta = le &- re
       if (lc | rc) <= 0xffff_ffff
-        && max(le, re) <= 0x2fff && delta.magnitude <= 9
+        && max(le, re) <= 0x2fff // Neither combination field starts `0b11...`.
+        && delta.magnitude <= 9
       {
         let x = Int64(truncatingIfNeeded: lc)
         let y = Int64(truncatingIfNeeded: rc)
