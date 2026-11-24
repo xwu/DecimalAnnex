@@ -843,7 +843,7 @@ extension UInt64 {
 
 @available(anyAppleOS 26.0, *)
 extension Decimal128: CustomStringConvertible {
-  @inlinable
+  @usableFromInline
   internal func _description(_ buffer: inout MutableRawSpan) -> Range<Int> {
     precondition(isFinite && buffer.byteCount >= 46)
     // The longest description requires only 42 bytes,
