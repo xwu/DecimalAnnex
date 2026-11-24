@@ -702,7 +702,9 @@ extension Decimal128: FloatingPoint {
         c.high = ~c.high &+ (c.low == 0 ? 1 : 0)
         c.low = 0 &- c.low
       }
-      isSignMinus = c == (0, 0) ? rule == .down : sxy != complement
+      isSignMinus = c == (0, 0)
+        ? rule == .down // Exact zero. See IEEE 754 §6.3.
+        : sxy != complement
       return ._pack(
         isSignMinus: isSignMinus,
         biasedExponent: exy,
@@ -908,19 +910,18 @@ extension Decimal128: FloatingPoint {
         assert(cxy.high == 0)
         cxy_ = cxy.low._multipliedFullWidth(by1e: -n_)
       }
-      if cxy_ >= cz_ {
-        let borrow: Bool
-        (c.low, borrow) = cxy_.low.subtractingReportingOverflow(cz_.low)
-        c.high = cxy_.high &- (cz_.high &+ (borrow ? 1 : 0))
-        isSignMinus = c == (0, 0)
-          ? rule == .down // Exact zero. See IEEE 754 §6.3.
-          : sxy
-      } else {
-        let borrow: Bool
-        (c.low, borrow) = cz_.low.subtractingReportingOverflow(cxy_.low)
-        c.high = cz_.high &- (cxy_.high &+ (borrow ? 1 : 0))
-        isSignMinus = z._isSignMinus
+      // Compute `abs(cxy_ - cz_)`.
+      let borrow: Bool
+      (c.low, borrow) = cxy_.low.subtractingReportingOverflow(cz_.low)
+      c.high = cxy_.high &- (cz_.high &+ (borrow ? 1 : 0))
+      let complement = Int128(bitPattern: c.high) < 0
+      if complement {
+        c.high = ~c.high &+ (c.low == 0 ? 1 : 0)
+        c.low = 0 &- c.low
       }
+      isSignMinus = c == (0, 0)
+        ? rule == .down // Exact zero. See IEEE 754 §6.3.
+        : sxy != complement
     } else if delta >= 0 {
       // Addend `z` is dominant.
       isSignMinus = z._isSignMinus

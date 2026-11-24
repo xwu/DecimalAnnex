@@ -397,53 +397,44 @@ extension Decimal128: AdditiveArithmetic {
     var (e1, e2) = (lhs.exponentBitPattern, rhs.exponentBitPattern)
 
     if e1 == e2 {
-      var isSignMinus = lhs._isSignMinus
       var c1 = lhs.significandBitPattern
       let c2 = rhs.significandBitPattern
-      if isSignMinus == rhs._isSignMinus {
-        c1 &+= c2
-        if c1 >= ._1e34 {
-          guard e1 < 12287 else {
-            return ._overflow(isSignMinus: isSignMinus, rule, &flags)
-          }
-          let r: UInt128
-          (c1, r) = c1.quotientAndRemainder(dividingBy: 10)
-          e1 &+= 1
-          if r != 0 {
-            switch rule {
-            case .toNearestOrEven:
-              c1 &+= r &+ (c1 & 1) > 5 ? 1 : 0
-            case .toNearestOrAwayFromZero:
-              c1 &+= r >= 5 ? 1 : 0
-            case .towardZero:
-              break
-            case .awayFromZero:
-              c1 &+= 1
-            case .down:
-              c1 &+= isSignMinus ? 1 : 0
-            case .up:
-              c1 &+= isSignMinus ? 0 : 1
-            @unknown default:
-              fatalError("Unknown rounding rule.")
-            }
-            _raise(.inexact, in: &flags)
-          }
-          let abs =
-            Self(bitPattern: UInt128(truncatingIfNeeded: e1) &<< 113 | c1)
-          return isSignMinus ? -abs : abs
+      // Compute `c1 + c2` if same sign,
+      // or `abs(c1 - c2) = abs(~(~c1 + c2))` if not.
+      let mask: UInt128 = lhs._isSignMinus == rhs._isSignMinus ? 0 : .max
+      c1 = ((c1 ^ mask) &+ c2) ^ mask
+      let complement = Int128(bitPattern: c1) < 0
+      if complement { c1 = 0 &- c1 }
+      let isSignMinus = c1 == 0
+        ? rule == .down  // Exact zero. See IEEE 754 §6.3.
+        : lhs._isSignMinus != complement
+      if c1 >= ._1e34 {
+        guard e1 < 12287 else {
+          return ._overflow(isSignMinus: isSignMinus, rule, &flags)
         }
-      } else {
-        let borrow: Bool
-        (c1, borrow) = c1.subtractingReportingOverflow(c2)
-        if borrow {
-          c1 = ~c1 &+ 1
-          isSignMinus.toggle()
-        } else if c1 == 0 {
-          // Exact zero. See IEEE 754 §6.3.
-          isSignMinus = rule == .down
+        let r: UInt128
+        (c1, r) = c1.quotientAndRemainder(dividingBy: 10)
+        e1 &+= 1
+        if r != 0 {
+          switch rule {
+          case .toNearestOrEven:
+            c1 &+= r &+ (c1 & 1) > 5 ? 1 : 0
+          case .toNearestOrAwayFromZero:
+            c1 &+= r >= 5 ? 1 : 0
+          case .towardZero:
+            break
+          case .awayFromZero:
+            c1 &+= 1
+          case .down:
+            c1 &+= isSignMinus ? 1 : 0
+          case .up:
+            c1 &+= isSignMinus ? 0 : 1
+          @unknown default:
+            fatalError("Unknown rounding rule.")
+          }
+          _raise(.inexact, in: &flags)
         }
       }
-      // Exact result.
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e1) &<< 113 | c1)
       return isSignMinus ? -abs : abs
     }
