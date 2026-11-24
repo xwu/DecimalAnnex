@@ -477,25 +477,57 @@ extension Decimal128: Hashable {
   public func hash(into hasher: inout Hasher) {
     let bits: UInt128
     if !_isFiniteNonzero {
-      if isNaN {
-        // Preserve canonical payloads but clear the signaling bit.
-        var mask: UInt128 = 0x3f000 &<< 110
-        if _trailingSignificandBitPattern < ._1e33 {
-          mask |= 1 &<< 110 &- 1
-        }
-        bits = bitPattern & mask
-      } else if isInfinite {
-        bits = bitPattern & (0x3e000 &<< 110)
-      } else {
-        bits = 0
-      }
+      bits = !isFinite ? _canonical.bitPattern : 0
     } else {
+      // Prefer the cohort member with 14 raw significand digits when possible.
+      // Also, prefer a cohort member with 15 raw significand digits if it
+      // fits in 49 bits (see below).
+      //
+      // Otherwise, prefer the cohort member with 34 raw significand digits.
       var e = Int(truncatingIfNeeded: bitPattern &>> 113) & 0x3fff
       var c = bitPattern & (1 &<< 113 &- 1)
-      Self._select(
-        biasedExponent: &e,
-        nonzeroSignificand: &c,
-        boundedPreferredBiasedExponent: 0x2fff)
+      if c < 0x2_0000_0000_0000 /* 2**49 */ {
+        if c < 100_000_000_000_000 {
+          let n = min(e, 13 &- c._commonLogarithm)
+          c &*= unsafe ._exp10[unchecked: n]
+          e &-= n
+        } else {
+          let q = UInt64(truncatingIfNeeded: c)
+          if e < 0x2fff && q % 10 == 0 {
+            c = UInt128(q / 10)
+            e &+= 1
+          }
+        }
+      } else {
+        if c < ._1e33 {
+          let n = 33 &- c._commonLogarithm
+          c &*= unsafe ._exp10[unchecked: n]
+          e &-= n
+        }
+        if c & (1 &<< 19 &- 1) == 0,
+          let q = c._quotientIfExactDividingBy1e16()
+        {
+          let q = UInt64(truncatingIfNeeded: q)
+          if q % 1_000 == 0 {
+            let c_ = q / 1_000
+            if c_ % 10 == 0 {
+              c = UInt128(c_ / 10)
+              e &+= 20
+            } else if e <= 0x2fff - 19 && c_ < 0x2_0000_0000_0000 {
+              c = UInt128(c_)
+              e &+= 19
+            }
+          }
+        }
+        if e < 0 {
+          let n = Int(exponentBitPattern)
+          c = unsafe significandBitPattern &* ._exp10[unchecked: n]
+          e = 0
+        } else if e > 0x2fff {
+          c &*= unsafe ._exp10[unchecked: e &- 0x2fff]
+          e = 0x2fff
+        }
+      }
       bits = (bitPattern & (1 &<< 127)) | UInt128(e) &<< 113 | c
     }
     let mask: UInt64 = (1 &<< 49) &- 1
