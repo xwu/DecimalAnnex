@@ -588,7 +588,36 @@ extension Decimal128 {
       self = source.sign == .minus ? -Self() : Self()
       return
     }
+
     let (m, e) = source._unpack(precision: format.precision)
+
+    // Fast path for some exactly representable values.
+    // Purely a performance optimization.
+    // See also Cornea et al., IEEE Trans Comput (2009), §5.2.2.
+    do {
+      let exponent = e &+ 127 // `floor(log2(abs(source)))`.
+      if exponent >= -48 && exponent <= 112 {
+        // Compute `k`, the least number of decimal places
+        // required to express `source` exactly.
+        let k = max(0, -(e &+ m.trailingZeroBitCount))
+        let l = _Cox.log2pow10(k) // `floor(log2(10**k))`.
+        // The decimal integer significand we want is `c = abs(source) * 10**k`.
+        // The sum `exponent + l` is either `floor(log2(c))` or one less.
+        if exponent &+ l < 113 { // `2**113 > 1e34`.
+          // Since `k <= 48` here, powers in the lookup table are always exact.
+          let pow5 = _Cox.pow10(k).high &>> (127 &+ k &- l)
+          let c = (m &>> -(e &+ k)) &* pow5
+          if c < ._1e34 {
+            self.init(
+              sign: source.sign,
+              exponentBitPattern: UInt(6176 &- k),
+              significandBitPattern: c)
+            return
+          }
+        }
+      }
+    }
+
     var d: UInt128
     let p: Int
     let inexact: Bool
