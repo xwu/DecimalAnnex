@@ -162,6 +162,7 @@ extension _Cox {
   }
 
   @inlinable
+  @inline(always)
   internal static func uscale(
     _ x: UInt128,
     _ scaler: (pm: (high: UInt128, low: UInt128), s: Int)
@@ -246,6 +247,7 @@ extension _Cox {
   }
 
   @inlinable
+  @inline(always)
   internal static func parse<T: BinaryFloatingPoint>(
     _ d: UInt128,
     _ p: Int,
