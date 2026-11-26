@@ -170,15 +170,39 @@ extension _Cox {
     _ scaler: (pm: (high: UInt128, low: UInt128), s: Int)
   ) -> UInt128 {
     if scaler.s >= 128 { return 1 }
+    if scaler.s >= 66 {
+      let hi =
+        UInt64(truncatingIfNeeded: x &>> 64).multipliedFullWidth(
+          by: UInt64(truncatingIfNeeded: scaler.pm.high &>> 64)).high
+      let shift = scaler.s &- 64
+      let divisor: UInt64 = 1 &<< shift
+      // The highest 64 bits of `x.multipliedFullWidth(by: scaler.pm.high)` are
+      // `hi`, `hi + 1`, or `hi + 2`.
+      //
+      // If dividing all three of these possibilities by `divisor` gives the
+      // same quotient and nonzero remainder, then the sticky bit is set and
+      // no correction is needed.
+      //
+      // Thus, with the estimated remainder `r = hi & (divisor &- 1)`, test:
+      //
+      //     (r != 0 && r < divisor) &&
+      //       (r + 1 != 0 && r + 1 < divisor) &&
+      //       (r + 2 != 0 && r + 2 < divisor)
+      //
+      // ...which can be equivalently expressed as:
+      if hi & (divisor &- 1) &- 1 < divisor &- 3 {
+        return UInt128(hi &>> shift) | 1
+      }
+    }
     var hi: UInt128
     let mid: UInt128
-    (hi, mid) = x.multipliedFullWidth(by: scaler.pm.high)
+    (hi, mid) = x._multipliedFullWidth(by: scaler.pm.high)
     var sticky = true
     if hi & ((1 &<< scaler.s) &- 1) == 0 {
       // See Cox's discussion for justification of this approach.
-      let (correction, _) = x.multipliedFullWidth(by: scaler.pm.low)
+      let (correction, _) = x._multipliedFullWidth(by: scaler.pm.low)
       sticky = mid &- correction > 1
-      if mid < correction { hi &-= 1}
+      if mid < correction { hi &-= 1 }
     }
     return (hi &>> scaler.s) | (sticky ? 1 : 0)
   }
