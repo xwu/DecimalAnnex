@@ -415,25 +415,23 @@ extension Decimal128: AdditiveArithmetic {
         let r: UInt128
         (c1, r) = c1.quotientAndRemainder(dividingBy: 10)
         e1 &+= 1
-        if r != 0 {
-          switch rule {
-          case .toNearestOrEven:
-            c1 &+= r &+ (c1 & 1) > 5 ? 1 : 0
-          case .toNearestOrAwayFromZero:
-            c1 &+= r >= 5 ? 1 : 0
-          case .towardZero:
-            break
-          case .awayFromZero:
-            c1 &+= 1
-          case .down:
-            c1 &+= isSignMinus ? 1 : 0
-          case .up:
-            c1 &+= isSignMinus ? 0 : 1
-          @unknown default:
-            fatalError("Unknown rounding rule.")
-          }
-          _raise(.inexact, in: &flags)
+        switch rule {
+        case .toNearestOrEven:
+          c1 &+= r &+ (c1 & 1) > 5 ? 1 : 0
+        case .toNearestOrAwayFromZero:
+          c1 &+= r >= 5 ? 1 : 0
+        case .towardZero:
+          break
+        case .awayFromZero:
+          c1 &+= r != 0 ? 1 : 0
+        case .down:
+          c1 &+= r != 0 && isSignMinus ? 1 : 0
+        case .up:
+          c1 &+= r != 0 && !isSignMinus ? 1 : 0
+        @unknown default:
+          fatalError("Unknown rounding rule.")
         }
+        _raise(r != 0 ? .inexact : [], in: &flags)
       }
       let abs = Self(bitPattern: UInt128(truncatingIfNeeded: e1) &<< 113 | c1)
       return isSignMinus ? -abs : abs

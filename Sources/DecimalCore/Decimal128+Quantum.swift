@@ -81,37 +81,51 @@ extension Decimal128 {
       }
       c &*= unsafe ._exp10[unchecked: n]
     } else {
-      let r: UInt128
-      let half: UInt128
-      if n < -34 {
-        r = c
-        half = ._1e34
-        c = 0
-      } else {
-        (c, r) = c._quotientAndRemainder(dividingBy1e: -n)
-        half = unsafe ._exp10[unchecked: -n] &>> 1
+      @inline(always)
+      func finish<
+        U: FixedWidthInteger & UnsignedInteger
+      >(_ q: U, _ r: U, _ half: U) -> UInt128 {
+        let nextAway: Bool =
+          switch rule {
+          case .toNearestOrEven:
+            r &+ (q & 1) > half
+          case .toNearestOrAwayFromZero:
+            r >= half
+          case .towardZero:
+            false
+          case .awayFromZero:
+            r != 0
+          case .down:
+            r != 0 && _isSignMinus
+          case .up:
+            r != 0 && !_isSignMinus
+          @unknown default:
+            fatalError("Unknown rounding rule.")
+          }
+        _raise(r != 0 ? .inexact : [], in: &flags)
+        return UInt128(truncatingIfNeeded: q &+ (nextAway ? 1 : 0))
       }
-      if r != 0 {
-        switch rule {
-        case .toNearestOrEven:
-          c &+= r &+ (c & 1) > half ? 1 : 0
-        case .toNearestOrAwayFromZero:
-          c &+= r >= half ? 1 : 0
-        case .towardZero:
-          break
-        case .awayFromZero:
-          c &+= 1
-        case .down:
-          c &+= _isSignMinus ? 1 : 0
-        case .up:
-          c &+= _isSignMinus ? 0 : 1
-        @unknown default:
-          fatalError("Unknown rounding rule.")
+
+      if n >= -19 && c <= 0xffff_ffff_ffff_ffff /* UInt64.max */ {
+        let divisor =
+          unsafe UInt64(truncatingIfNeeded: UInt128._exp10[unchecked: -n])
+        let (q, r) =
+          UInt64(truncatingIfNeeded: c)
+            .quotientAndRemainder(dividingBy: divisor)
+        c = finish(q, r, divisor &>> 1)
+      } else if n >= -34 {
+        let (q, r) = c._quotientAndRemainder(dividingBy1e: -n)
+        if r == 0 {
+          c = q
+        } else {
+          c = unsafe finish(q, r, UInt128._exp10[unchecked: -n] &>> 1)
         }
-        _raise(.inexact, in: &flags)
+      } else {
+        c = finish(0, c, ._1e34)
       }
     }
-    return Self(sign: sign, exponentBitPattern: oe, significandBitPattern: c)
+    let x = (bitPattern & (1 &<< 127)) | (UInt128(oe) &<< 113) | c
+    return Self(bitPattern: x)
   }
 
   /// Returns this value with the same quantum as the given value.
