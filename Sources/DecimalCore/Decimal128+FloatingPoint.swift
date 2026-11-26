@@ -2407,26 +2407,6 @@ extension Decimal128: FloatingPoint {
     _rounded(.init(rule))
   }
 
-  /// Rounds this value to the nearest integral value (ties away from zero).
-  @inline(always)
-  public mutating func round() {
-    self = rounded()
-  }
-
-  /// Rounds this value to an integral value using the specified rounding rule.
-  ///
-  /// For more information about the available rounding rules, see the
-  /// `FloatingPointRoundingRule` enumeration. To round a value using the
-  /// default "schoolbook rounding" of `.toNearestOrAwayFromZero`, you can use
-  /// the shorter `round()` method instead.
-  ///
-  /// - Parameters:
-  ///   - rule: The rounding rule to use.
-  @inline(always)
-  public mutating func round(_ rule: FloatingPointRoundingRule) {
-    self = rounded(rule)
-  }
-
   /// Returns this value rounded to the nearest integral value
   /// (ties away from zero), accumulating status flags.
   ///
@@ -2468,6 +2448,26 @@ extension Decimal128: FloatingPoint {
     _rounded(.init(rule), &flags)
   }
 
+  /// Rounds this value to the nearest integral value (ties away from zero).
+  @inline(always)
+  public mutating func round() {
+    self = rounded()
+  }
+
+  /// Rounds this value to an integral value using the specified rounding rule.
+  ///
+  /// For more information about the available rounding rules, see the
+  /// `FloatingPointRoundingRule` enumeration. To round a value using the
+  /// default "schoolbook rounding" of `.toNearestOrAwayFromZero`, you can use
+  /// the shorter `round()` method instead.
+  ///
+  /// - Parameters:
+  ///   - rule: The rounding rule to use.
+  @inline(always)
+  public mutating func round(_ rule: FloatingPointRoundingRule) {
+    self = rounded(rule)
+  }
+
   /// Rounds this value to the nearest integral value (ties away from zero),
   /// accumulating status flags.
   ///
@@ -2484,6 +2484,9 @@ extension Decimal128: FloatingPoint {
 
   /// Rounds this value to an integral value using the specified rounding rule,
   /// accumulating status flags.
+  ///
+  /// For more information about the available rounding rules, see the
+  /// `FloatingPointRoundingRule` enumeration.
   ///
   /// If the result of rounding is inexact, then `.inexact` will be inserted
   /// into `flags`.
