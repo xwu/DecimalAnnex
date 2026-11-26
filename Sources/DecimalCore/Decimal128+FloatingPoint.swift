@@ -2295,52 +2295,83 @@ extension Decimal128: FloatingPoint {
     self = squareRoot(rounding: rule, &flags)
   }
 
-  // A failable, always-inlined fast path for some canonical finite values.
-  // Purely an optimization.
+  @usableFromInline
+  internal func _rounded(
+    _ rule: _DecimalFloatingPointRoundingRule,
+    _ flags: inout DecimalFloatingPointStatusFlags
+  ) -> Decimal128 {
+    let c = bitPattern & (1 &<< 113 &- 1)
+    let e = Int(truncatingIfNeeded: bitPattern &>> 113) & 0x3fff
+    let q = e &- 6176
+
+    @inline(always)
+    func finish<
+      U: FixedWidthInteger & UnsignedInteger
+    >(_ quo: U, _ rem: U, _ half: U) -> Decimal128 {
+      let nextAway: Bool =
+        switch rule {
+        case .toNearestOrEven:
+          rem &+ (quo & 1) > half
+        case .toNearestOrAwayFromZero:
+          rem >= half
+        case .towardZero:
+          false
+        case .awayFromZero:
+          rem != 0
+        case .down:
+          rem != 0 && _isSignMinus
+        case .up:
+          rem != 0 && !_isSignMinus
+        @unknown default:
+          fatalError("Unknown rounding rule.")
+        }
+      _raise(rem != 0 ? .inexact : [], in: &flags)
+      let x = (bitPattern & (1 &<< 127))
+        | (6176 &<< 113)
+        | UInt128(truncatingIfNeeded: quo &+ (nextAway ? 1 : 0))
+      return Self(bitPattern: x)
+    }
+
+    if q <= 0 && c <= 0xffff_ffff_ffff_ffff /* UInt64.max */ && q >= -19 {
+      // The value is finite and canonical.
+      let c = UInt64(truncatingIfNeeded: c)
+      let divisor =
+        unsafe UInt64(truncatingIfNeeded: UInt128._exp10[unchecked: -q])
+      let (quo, rem) = c.quotientAndRemainder(dividingBy: divisor)
+      return finish(quo, rem, max(1, divisor &>> 1))
+    }
+
+    guard e <= 0x2fff && c < ._1e34 /* isFinite && isCanonical */ else {
+      if isSignalingNaN {
+        _raise(.invalid, in: &flags)
+        return _quiet._canonical
+      }
+      if exponentBitPattern >= 6176 {
+        return _canonical
+      }
+      return _isSignMinus ? -Self() : Self()
+    }
+    if q >= 0 {
+      return self
+    }
+    if q >= -34 && c != 0 {
+      let (quo, rem) = c._quotientAndRemainder(dividingBy1e: -q)
+      return unsafe finish(quo, rem, UInt128._exp10[unchecked: -q] &>> 1)
+    }
+    return finish(0, c, ._1e34)
+  }
+
   @inlinable
   @inline(always)
   internal func _rounded(
     _ rule: _DecimalFloatingPointRoundingRule
-  ) -> (value: Decimal128, inexact: Bool)? {
-    let c = bitPattern & (1 &<< 113 &- 1)
-    let e = Int(truncatingIfNeeded: bitPattern &>> 113) & 0x3fff
-    let q = e &- 6176
-    guard
-      UInt(bitPattern: -q) <= 19 /* (-19...0).contains(q) */
-      && c <= 0xffff_ffff_ffff_ffff /* UInt64.max */
-    else {
-      if e <= 0x2fff && q >= 0 && c < ._1e34 { return (self, false) }
-      return nil
+  ) -> Decimal128 {
+    var flags: DecimalFloatingPointStatusFlags = []
+    defer {
+      flags.subtract(.inexact)
+      _signal(flags)
     }
-
-    let divisor =
-      unsafe UInt64(truncatingIfNeeded: UInt128._exp10[unchecked: -q])
-    var quo: UInt64
-    let rem: UInt64
-    (quo, rem) =
-      UInt64(truncatingIfNeeded: c).quotientAndRemainder(dividingBy: divisor)
-    let inexact = rem != 0
-    switch rule {
-    case .toNearestOrEven:
-      // Subtract from `divisor` before halving instead of adding to `rem`
-      // as elsewhere, because `rem` may be zero and `divisor` may be 1.
-      quo &+= rem > ((divisor &- (quo & 1)) &>> 1) ? 1 : 0
-    case .toNearestOrAwayFromZero:
-      quo &+= rem > ((divisor &- 1) &>> 1) ? 1 : 0
-    case .towardZero:
-      break
-    case .awayFromZero:
-      quo &+= inexact ? 1 : 0
-    case .down:
-      quo &+= inexact && _isSignMinus ? 1 : 0
-    case .up:
-      quo &+= inexact && !_isSignMinus ? 1 : 0
-    @unknown default:
-      fatalError("Unknown rounding rule.")
-    }
-    let value = Self(
-      bitPattern: (bitPattern & (1 &<< 127)) | (6176 &<< 113) | UInt128(quo))
-    return (value, inexact)
+    return _rounded(rule, &flags)
   }
 
   /// Returns this value rounded to the nearest integral value
@@ -2352,13 +2383,7 @@ extension Decimal128: FloatingPoint {
   /// - Returns: The nearest integral value, rounding ties away from zero.
   @inline(always)
   public func rounded() -> Decimal128 {
-    if let result = _rounded(.toNearestOrAwayFromZero) { return result.value }
-    var flags: DecimalFloatingPointStatusFlags = []
-    defer {
-      flags.subtract(.inexact)
-      _signal(flags)
-    }
-    return _rounded(.toNearestOrAwayFromZero, &flags)
+    _rounded(.toNearestOrAwayFromZero)
   }
 
   /// Returns this value rounded to an integral value using the specified
@@ -2379,14 +2404,7 @@ extension Decimal128: FloatingPoint {
   /// - Returns: The integral value found by rounding using `rule`.
   @inline(always)
   public func rounded(_ rule: FloatingPointRoundingRule) -> Decimal128 {
-    let rule = _DecimalFloatingPointRoundingRule(rule)
-    if let result = _rounded(rule) { return result.value }
-    var flags: DecimalFloatingPointStatusFlags = []
-    defer {
-      flags.subtract(.inexact)
-      _signal(flags)
-    }
-    return _rounded(rule, &flags)
+    _rounded(.init(rule))
   }
 
   /// Rounds this value to the nearest integral value (ties away from zero).
@@ -2409,66 +2427,6 @@ extension Decimal128: FloatingPoint {
     self = rounded(rule)
   }
 
-  @usableFromInline
-  internal func _rounded(
-    _ rule: _DecimalFloatingPointRoundingRule,
-    _ flags: inout DecimalFloatingPointStatusFlags
-  ) -> Decimal128 {
-    guard _isFiniteNonzero else {
-      if isSignalingNaN {
-        _raise(.invalid, in: &flags)
-        return _quiet._canonical
-      }
-      if exponentBitPattern >= 6176 {
-        return _canonical
-      }
-      return _isSignMinus ? -Self() : Self()
-    }
-
-    let e = exponentBitPattern
-    if e >= 6176 {
-      return self
-    }
-
-    let isSignMinus = _isSignMinus
-    let n = Int(e) &- 6176
-    let c = significandBitPattern
-    var q: UInt128
-    let r: UInt128
-    let half: UInt128
-
-    assert(n < 0)
-    if n >= -34 {
-      (q, r) = c._quotientAndRemainder(dividingBy1e: -n)
-      half = r == 0 ? 1 : unsafe ._exp10[unchecked: -n] &>> 1
-    } else {
-      q = 0
-      r = c
-      half = ._1e34
-    }
-    if r != 0 {
-      switch rule {
-      case .toNearestOrEven:
-        q &+= r &+ (q & 1) > half ? 1 : 0
-      case .toNearestOrAwayFromZero:
-        q &+= r >= half ? 1 : 0
-      case .towardZero:
-        break
-      case .awayFromZero:
-        q &+= 1
-      case .down:
-        q &+= isSignMinus ? 1 : 0
-      case .up:
-        q &+= isSignMinus ? 0 : 1
-      @unknown default:
-        fatalError("Unknown rounding rule.")
-      }
-      _raise(.inexact, in: &flags)
-    }
-    let abs = Self(bitPattern: 6176 &<< 113 | q)
-    return isSignMinus ? -abs : abs
-  }
-
   /// Returns this value rounded to the nearest integral value
   /// (ties away from zero), accumulating status flags.
   ///
@@ -2484,11 +2442,7 @@ extension Decimal128: FloatingPoint {
   public func rounded(
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
-    if let result = _rounded(.toNearestOrAwayFromZero) {
-      if result.inexact { _raise(.inexact, in: &flags) }
-      return result.value
-    }
-    return _rounded(.toNearestOrAwayFromZero, &flags)
+    _rounded(.toNearestOrAwayFromZero, &flags)
   }
 
   /// Returns this value rounded to an integral value using the specified
@@ -2511,12 +2465,7 @@ extension Decimal128: FloatingPoint {
     _ rule: FloatingPointRoundingRule,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
-    let rule = _DecimalFloatingPointRoundingRule(rule)
-    if let result = _rounded(rule) {
-      if result.inexact { _raise(.inexact, in: &flags) }
-      return result.value
-    }
-    return _rounded(rule, &flags)
+    _rounded(.init(rule), &flags)
   }
 
   /// Rounds this value to the nearest integral value (ties away from zero),
