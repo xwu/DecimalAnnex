@@ -95,7 +95,9 @@ extension _Cox {
 
   @inlinable
   @inline(always)
-  internal static func round(_ u: UInt128) -> UInt128 {
+  internal static func round<
+    U: FixedWidthInteger & UnsignedInteger
+  >(_ u: U) -> U {
     (u &+ 1 &+ ((u &>> 2) & 1)) &>> 2
   }
 
@@ -266,27 +268,35 @@ extension _Cox {
     }
     let clz = d.leadingZeroBitCount
     let lp = log2pow10(p)
-    var e = min(-tiny, precision &- 128 &+ clz &- lp)
-    var u = uscale(d &<< clz, prescale(e &- clz, p))
-    let isTiny = e == -tiny && u < ((1 as UInt128) &<< (precision &+ 1))
-    if u >= ((1 as UInt128) &<< (precision &+ 2)) &- 2 {
-      u = (u &>> 1) | (u & 1)
-      e &-= 1
+    let e = min(-tiny, precision &- 128 &+ clz &- lp)
+    let u = uscale(d &<< clz, prescale(e &- clz, p))
+
+    @inline(always)
+    func finish<
+      U: FixedWidthInteger & UnsignedInteger
+    >(_ u: U) -> (magnitude: T, flags: DecimalFloatingPointStatusFlags) {
+      assert(precision &+ 3 <= U.bitWidth)
+      let isTiny = e == -tiny && u < ((1 as U) &<< (precision &+ 1))
+      let shift = u >= ((1 as U) &<< (precision &+ 2)) &- 2 ? 1 : 0
+      let u_ = (u &>> shift) | (u & 1)
+      let m = round(u_)
+
+      let leadingBit = (1 as U) &<< (precision &- 1)
+      let carry = Int(truncatingIfNeeded: m &>> precision)
+      let exponent = (precision &- 1) &- (e &- shift) &+ carry
+      let biasedExponent = m < leadingBit ? 0 : exponent &+ emax
+      if biasedExponent > emax &+ emax {
+        return (.infinity, .overflowInexact)
+      }
+      let magnitude = T(
+        sign: .plus,
+        exponentBitPattern: .init(biasedExponent),
+        significandBitPattern: .init(m & (leadingBit &- 1)))
+      let flags: DecimalFloatingPointStatusFlags =
+        u_ & 3 == 0 ? [] : (isTiny ? .underflowInexact : .inexact)
+      return (magnitude, flags)
     }
-    let m = round(u)
-    let clz_ = m.leadingZeroBitCount
-    let exponent = 127 &- clz_ &- e
-    if m != 0 && exponent > emax {
-      return (.infinity, .overflowInexact)
-    }
-    let fraction =
-      exponent < emin ? m : (m &<< (clz_ &+ 1)) &>> (129 &- precision)
-    let magnitude = T(
-      sign: .plus,
-      exponentBitPattern: .init(max(exponent &+ emax, 0)),
-      significandBitPattern: .init(fraction))
-    let flags: DecimalFloatingPointStatusFlags =
-      u & 3 == 0 ? [] : (isTiny ? .underflowInexact : .inexact)
-    return (magnitude, flags)
+
+    return precision <= 61 ? finish(UInt64(truncatingIfNeeded: u)) : finish(u)
   }
 }
