@@ -2300,7 +2300,9 @@ extension Decimal128: FloatingPoint {
     _ rule: _DecimalFloatingPointRoundingRule,
     _ flags: inout DecimalFloatingPointStatusFlags
   ) -> Decimal128 {
+    // See `significandBitPattern`:
     let c = bitPattern & (1 &<< 113 &- 1)
+    // See `exponentBitPattern`:
     let e = Int(truncatingIfNeeded: bitPattern &>> 113) & 0x3fff
     let q = e &- 6176
 
@@ -2333,7 +2335,7 @@ extension Decimal128: FloatingPoint {
     }
 
     if q <= 0 && c <= 0xffff_ffff_ffff_ffff /* UInt64.max */ && q >= -19 {
-      // The value is finite and canonical.
+      // All such values are finite and canonical.
       let c = UInt64(truncatingIfNeeded: c)
       let divisor =
         unsafe UInt64(truncatingIfNeeded: UInt128._exp10[unchecked: -q])
@@ -2351,6 +2353,8 @@ extension Decimal128: FloatingPoint {
       }
       return _isSignMinus ? -Self() : Self()
     }
+
+    // (Note that we admit canonical zero here.)
     if q >= 0 {
       return self
     }
