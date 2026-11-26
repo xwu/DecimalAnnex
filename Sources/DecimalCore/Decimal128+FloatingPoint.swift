@@ -2027,6 +2027,25 @@ extension Decimal128: FloatingPoint {
     self = truncatingRemainder(dividingBy: other, &flags)
   }
 
+  // Integer reciprocal square roots in 16 fractional bits, stored minus one,
+  // sampled in 1/64 intervals from [1, 2) and 1/32 intervals from [2, 4].
+  @usableFromInline
+  internal static let _rsqrt: [129 of UInt16] = [
+    65535, 65029, 64534, 64051, 63578, 63116, 62663, 62221, 61787, 61362,
+    60946, 60539, 60139, 59747, 59363, 58986, 58616, 58253, 57897, 57547,
+    57204, 56866, 56534, 56209, 55888, 55573, 55264, 54959, 54660, 54365,
+    54075, 53790, 53509, 53232, 52960, 52692, 52428, 52168, 51911, 51659,
+    51410, 51164, 50922, 50684, 50449, 50217, 49988, 49762, 49540, 49320,
+    49103, 48889, 48678, 48469, 48264, 48060, 47860, 47662, 47466, 47272,
+    47081, 46893, 46706, 46522, 46340, 45982, 45632, 45291, 44956, 44629,
+    44309, 43996, 43690, 43389, 43095, 42807, 42524, 42247, 41976, 41709,
+    41448, 41191, 40939, 40692, 40449, 40210, 39976, 39745, 39519, 39296,
+    39077, 38862, 38650, 38442, 38237, 38035, 37836, 37641, 37448, 37259,
+    37072, 36888, 36707, 36528, 36352, 36178, 36007, 35839, 35672, 35508,
+    35346, 35187, 35029, 34874, 34721, 34570, 34420, 34273, 34127, 33984,
+    33842, 33702, 33563, 33426, 33291, 33158, 33026, 32896, 32767,
+  ]
+
   @usableFromInline
   internal func _squareRoot(
     rounding rule: _DecimalFloatingPointRoundingRule,
@@ -2054,86 +2073,95 @@ extension Decimal128: FloatingPoint {
       return .nan
     }
     var c = significandBitPattern
-    let pe = (Int(exponentBitPattern) &+ 6176) &>> 1
+    let e = exponentBitPattern
+    let pe = (Int(e) &+ 6176) &>> 1
 
-    // FIXME: Include an alternative implementation using integer math
-    // that leaves binary floating-point status flags unaffected which
-    // could be conditionally compiled in.
-    //
-    // Assuming other `Double` operations are correctly rounded to nearest,
-    // correct rounding is *not* required for `Double.squareRoot()`;
-    // we can tolerate an error in that operation up to 5.5 ulp.
-    let radicand = (exponentBitPattern & 1) == 0 ? c : c &* 10
-    let estimate_ =
-      (Double(UInt64(truncatingIfNeeded: radicand &>> 64)) * 0x1p64
-        + Double(UInt64(truncatingIfNeeded: radicand))).squareRoot()
-      // `Double(radicand).squareRoot()`
-
-    var estimate = UInt128(UInt64(estimate_))
-    let difference = Int128(radicand) &- Int128(estimate &* estimate)
-    let differenceMagnitude_ =
-      Double(UInt64(truncatingIfNeeded: difference.magnitude &>> 64)) * 0x1p64
-        + Double(UInt64(truncatingIfNeeded: difference.magnitude))
-      // `Double(difference.magnitude)`
-    let correction_ =
-      (differenceMagnitude_ / (estimate_ + estimate_)).rounded()
-    let correction = UInt128(UInt64(correction_))
-    if difference < 0 {
-      estimate &-= correction
-    } else {
-      estimate &+= correction
-    }
-    if estimate &* estimate == radicand {
-      // Exact root.
-      return Self(
-        bitPattern: UInt128(truncatingIfNeeded: pe) &<< 113 | estimate)
+    // Estimate `1/sqrt(m/2**62)` as an unsigned value with 63 fractional bits.
+    @inline(always)
+    func reciprocal(_ m: UInt64) -> UInt64 {
+      let top = Int(truncatingIfNeeded: m &>> 63)
+      let n = m &>> top
+      let idx = (top &<< 6) &+ Int(truncatingIfNeeded: n &>> 56) &- 64
+      let a = UInt64(unsafe Self._rsqrt[unchecked: idx]) &+ 1
+      let b = UInt64(unsafe Self._rsqrt[unchecked: idx &+ 1]) &+ 1
+      return ((a &<< 16) &- (a &- b) &* ((n &>> 40) & 0xffff)) &<< 31
     }
 
-    // Scale raw significand to 67 or 68 digits, preserving exponent parity.
-    var n = 66 &- c._commonLogarithm
-    n &+= (Int(exponentBitPattern) &- n) & 1
-    let c_: (high: UInt128, low: UInt128)
-    if n > 38 {
-      c &*= unsafe ._exp10[unchecked: n &- 38]
-      c_ = c._multipliedFullWidth(by1e: 38)
-    } else {
-      c_ = c._multipliedFullWidth(by1e: n)
+    // Replace estimate `r` of `1/sqrt(z) = 1/sqrt(m/2**62)` with
+    // refined estimate `r * (3 − z(r * r)) / 2`.
+    //
+    // (Newton's method as described in Karp and Markstein (1997), equation 2.)
+    @inline(always)
+    func refine(_ m: UInt64, _ r: UInt64) -> UInt64 {
+      let a = m.multipliedFullWidth(by: r).high
+      let b = a.multipliedFullWidth(by: r).high
+      let c = r.multipliedFullWidth(by: (3 &<< 60) &- b) // 123 fractional bits.
+      return (c.high &<< 3) | (c.low &>> 61)
     }
-    var e = (Int(exponentBitPattern) &+ 6176 &- n) &>> 1
 
-    let scale: UInt128 = unsafe ._exp10[unchecked: n &>> 1]
-    let scale_ =
-      Double(UInt64(truncatingIfNeeded: scale &>> 64)) * 0x1p64
-        + Double(UInt64(truncatingIfNeeded: scale))
-      // `Double(scale)`
-    let scaled_ = estimate_ * scale_
-
-    // Scale down the root estimate by 2**49 so its high part fits in `UInt64`.
-    let scaled = UInt64(scaled_ * 0x1p-49)
-    // Scale down the radicand by 2**98 (and take the floor).
-    let c__ = (c_.high &<< 30) | (c_.low &>> 98)
-
-    let delta1 = c__ &- UInt128(scaled) &* UInt128(scaled)
-    let d1_ = Double(Int64(truncatingIfNeeded: delta1 &>> 32))
-    // Correct `scaled` by:
+    // Choose `k` such that `c * 10**k` has 34, 35 or 36 digits
+    // and `k + 33` has the original exponent's parity.
     //
-    //            delta1 / (2 * scaled)
-    //     ≈ d1_ * 2**32 / (2 * scaled)
-    //     = d1_ * 2**31 / scaled
-    //     = d1_ * 2**80 / scaled_
-    let x_ = 0x1p80 / scaled_
-    let high = scaled &+ UInt64(bitPattern: Int64((d1_ * x_).rounded()))
+    // Note that here we underestimate using a closer approximation.
+    var k = 33 &- (1233 &* (127 &- c.leadingZeroBitCount)) &>> 12
+    k &+= (Int(e) &- k &- 33) & 1
+    c &*= unsafe ._exp10[unchecked: k]
+    let (n, c_) =
+      if c >= ._1e34 &* 10 {
+        (k &+ 31, c._multipliedFullWidth(by: ._1e33 / 100))
+      } else {
+        (k &+ 33, c._multipliedFullWidth(by: ._1e33))
+      }
+    var e_ = (Int(e) &+ 6176 &- n) &>> 1
 
-    let delta2 = c__ &- UInt128(high) &* UInt128(high)
-    let d2_ = Double(Int64(truncatingIfNeeded: delta2 &>> 1))
-    // Compute:
+    // Choose `j` such that `c_ / 2**(2*j)` is in [1, 4).
+    // Store that scaled radicand in `m` with 62 fractional bits.
+    let j = (255 &- c_.high.leadingZeroBitCount) &>> 1
+    let m = UInt64(truncatingIfNeeded: c_.high &>> (2 &* j &- 190))
+    var reciprocal = reciprocal(m)
+    reciprocal = refine(m, reciprocal)
+    reciprocal = refine(m, reciprocal)
+    let root = m.multipliedFullWidth(by: reciprocal).high
+
+    // Compute an estimate `y_` to `sqrt(c_) / 2**53`, with the denominator
+    // chosen because `delta = (c_ >> (53 * 2)) - y_ * y_` fits in `Int64`
+    // if `c_ < 10**68`, provided that the refined reciprocal approximates
+    // `1/sqrt(m/2**62)` with relative error at most `3.1e-18`.
+    let y_ = ((root &>> (113 &- j)) &+ 1) &>> 1
+    let delta = Int64(
+      bitPattern: UInt64(
+        truncatingIfNeeded: (c_.high &<< 22) | (c_.low &>> 106)
+      ) &- y_ &* y_)
+    // Given an initial estimate `y = y_ << 53` to `sqrt(c_)`, now refine it
+    // in the vein of Karp and Markstein (1997), equation 4:
     //
-    //       delta2 * 2**49 / (2 * scaled)
-    //     ≈    d2_ * 2**49 / scaled
-    //     =    d2_ * 2**98 / scaled_
-    let low = Int64((d2_ * (0x1p18 * x_)).rounded())
-
-    estimate = (UInt128(high) &<< 49) &+ UInt128(truncatingIfNeeded: low)
+    //     estimate = y + x/2 * (c_ - y * y)
+    //              ≈ (y_<<53) + x/2 * ((c_>>106) - y_ * y_) * 2**106
+    //              = (y_<<53) + x/2 * delta * 2**106,
+    //
+    // where `x` is an estimate of `1/sqrt(c_)`, which we don't have as-is.
+    // However, we do have `reciprocal / 2**63`, which is an estimate of:
+    //
+    //     1 / sqrt(c_ / 2**(2*j)) = 2**j / sqrt(c_).
+    //
+    // Therefore, `x` can be expressed as `reciprocal / 2**(j + 63)`.
+    // Since `reciprocal` is of type `UInt64` and may overflow if converted to
+    // `Int64`, we'll rewrite this as `(reciprocal>>1) / 2**(j + 62)`. Then:
+    //
+    //     estimate = (y_<<53) + (reciprocal>>1) / 2**(j + 63) * delta * 2**106
+    //              = (y_<<53) + delta * (reciprocal>>1) / 2**(j - 43).
+    //
+    // First compute `product = delta * (reciprocal>>1)`, then compute
+    // `correction = round(product / 2**(j - 43))`.
+    let product =
+      delta.multipliedFullWidth(
+        by: Int64(truncatingIfNeeded: reciprocal &>> 1))
+    // To obtain a correctly rounded `correction`, start with twice the
+    // unrounded correction amount `product.high / 2**(j - 108)` rounded down,
+    // then add one and shift right by one to obtain the rounded `correction`.
+    let correction = ((product.high &>> (j &- 108)) &+ 1) &>> 1
+    var estimate =
+      (UInt128(y_) &<< 53) &+ UInt128(truncatingIfNeeded: correction)
     var remainder = c_.low &- estimate &* estimate
     if Int128(bitPattern: remainder) < 0 {
       remainder &+= (estimate &<< 1) &- 1
@@ -2142,12 +2170,9 @@ extension Decimal128: FloatingPoint {
     assert(remainder <= estimate &<< 1)
 
     if remainder == 0 {
-      Self._select(
-        biasedExponent: &e,
-        nonzeroSignificand: &estimate,
-        boundedPreferredBiasedExponent: pe)
+      let x = estimate._quotientAndRemainder(dividingBy1e: n &>> 1).quotient
+      return Self(bitPattern: UInt128(truncatingIfNeeded: pe) &<< 113 | x)
     } else {
-      _raise(.inexact, in: &flags)
       let nextAway: Bool =
         switch rule {
         case .toNearestOrEven, .toNearestOrAwayFromZero:
@@ -2162,10 +2187,11 @@ extension Decimal128: FloatingPoint {
       estimate &+= nextAway ? 1 : 0
       if estimate == ._1e34 {
         estimate = ._1e33
-        e &+= 1
+        e_ &+= 1
       }
+      _raise(.inexact, in: &flags)
     }
-    return Self(bitPattern: UInt128(truncatingIfNeeded: e) &<< 113 | estimate)
+    return Self(bitPattern: UInt128(truncatingIfNeeded: e_) &<< 113 | estimate)
   }
 
   /// Returns the square root of the value.
