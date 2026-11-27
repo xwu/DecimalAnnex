@@ -507,11 +507,11 @@ extension Decimal128: FloatingPoint {
       }
     }
 
-    let lte = (cx | cy) <= 0xffff_ffff_ffff_ffff /* UInt64.max */
+    let smol = (cx | cy) <= 0xffff_ffff_ffff_ffff /* UInt64.max */
     guard z.isFinite /* && x._isFiniteNonzero && y._isFiniteNonzero */
       && max(ex, ey) <= 0x2fff
       && cx != 0 && cy != 0
-      && (lte || (cx < ._1e34 && cy < ._1e34))
+      && (smol || (cx < ._1e34 && cy < ._1e34))
     else {
       if z.isSignalingNaN {
         _raise(.invalid, in: &flags)
@@ -655,11 +655,10 @@ extension Decimal128: FloatingPoint {
       }
     }
 
-    if lte {
-      let (hi, lo) =
-        UInt64(truncatingIfNeeded: cx).multipliedFullWidth(
-          by: UInt64(truncatingIfNeeded: cy))
-      cxy = (0, UInt128(hi) &<< 64 | UInt128(lo))
+    if smol {
+      let x = UInt64(truncatingIfNeeded: cx)
+      let y = UInt64(truncatingIfNeeded: cy)
+      cxy = (0, UInt128(x) &* UInt128(y) /* cx &* cy */)
     } else {
       cxy = cx._multipliedFullWidth(by: cy)
     }
@@ -1183,7 +1182,17 @@ extension Decimal128: FloatingPoint {
     var lhs = self, rhs = rhs
     let isSignMinus = lhs._isSignMinus != rhs._isSignMinus
 
-    guard lhs._isFiniteNonzero && rhs._isFiniteNonzero else {
+    // See `exponentBitPattern`:
+    let le = Int(truncatingIfNeeded: lhs.bitPattern &>> 113) & 0x3fff
+    let re = Int(truncatingIfNeeded: rhs.bitPattern &>> 113) & 0x3fff
+    // See `significandBitPattern`:
+    let lc = lhs.bitPattern & ((1 &<< 113) &- 1)
+    let rc = rhs.bitPattern & ((1 &<< 113) &- 1)
+    let smol = (lc | rc) <= 0xffff_ffff_ffff_ffff /* UInt64.max */
+    guard /* lhs._isFiniteNonzero && rhs._isFiniteNonzero */
+      max(le, re) <= 0x2fff // Neither combination field starts `0b11...`.
+      && lc != 0 && rc != 0 && (smol || (lc < ._1e34 && rc < ._1e34))
+    else {
       if lhs.isSignalingNaN {
         _raise(.invalid, in: &flags)
         lhs = lhs._quiet
@@ -1225,9 +1234,7 @@ extension Decimal128: FloatingPoint {
       return isSignMinus ? -abs : abs
     }
 
-    var e = Int(lhs.exponentBitPattern) &- Int(rhs.exponentBitPattern) &+ 6176
-    let lc = lhs.significandBitPattern
-    let rc = rhs.significandBitPattern
+    var e = le &- re &+ 6176
 
     if rc == 1 {
       if e >= 0 && e <= 12287 {
@@ -1242,33 +1249,38 @@ extension Decimal128: FloatingPoint {
         &flags)
     }
 
-    // Fast path for integer significands that fit in 64 bits.
-    if (lc | rc) <= 0xffff_ffff_ffff_ffff /* UInt64.max */ {
-      let x = UInt64(truncatingIfNeeded: lc)
-      let y = UInt64(truncatingIfNeeded: rc)
-      let q = x / y
-      if x &- q &* y == 0 && UInt(bitPattern: e) <= 12287 {
+    let lc64 = UInt64(truncatingIfNeeded: lc)
+    let rc64 = UInt64(truncatingIfNeeded: rc)
+
+    if smol {
+      let q = lc64 / rc64
+      if lc64 &- q &* rc64 == 0 && UInt(bitPattern: e) <= 12287 {
         let abs = Self(bitPattern: UInt128(e) &<< 113 | UInt128(q))
         return isSignMinus ? -abs : abs
       }
-      let ctz1 = y.trailingZeroBitCount
-      var y_ = y &>> ctz1
+    }
+
+    let ctz1 = rc64.trailingZeroBitCount
+    let pow10 = unsafe ctz1 <= 33 && rc == ._exp10[unchecked: ctz1]
+
+    if smol && !pow10 {
+      var y = rc64 &>> ctz1
       var fives1 = 0
-      while y_ % 5 == 0 {
-        y_ /= 5
+      while y % 5 == 0 {
+        y /= 5
         fives1 &+= 1
       }
-      // Now, `y = (2 ** ctz1) * (5 ** fives1) * y_`,
-      // where `y_` and 10 are co-prime.
+      // Now, `rc64 = (2 ** ctz1) * (5 ** fives1) * y`,
+      // where `y` and 10 are co-prime.
       //
-      // The decimal expansion of `x / y` terminates exactly
-      // when `y_` divides `x`.
-      if x % y_ == 0 {
-        let ctz2 = x.trailingZeroBitCount
-        var x_ = x
+      // The decimal expansion of `lc64 / rc64` terminates exactly
+      // when `y` divides `lc64`.
+      if lc64 % y == 0 {
+        let ctz2 = lc64.trailingZeroBitCount
+        var x = lc64
         var fives2 = 0
-        while x_ % 5 == 0 {
-          x_ /= 5
+        while x % 5 == 0 {
+          x /= 5
           fives2 &+= 1
         }
         let digitCount = max(ctz1 &- ctz2, fives1 &- fives2)
@@ -1277,11 +1289,11 @@ extension Decimal128: FloatingPoint {
           let scale = unsafe UInt64(
             truncatingIfNeeded: UInt128._exp10[unchecked: digitCount_])
           let overflow: Bool
-          (x_, overflow) = x.multipliedReportingOverflow(by: scale)
+          (x, overflow) = lc64.multipliedReportingOverflow(by: scale)
           // Since we may fall through, we won't mutate `e` itself.
           let e_ = e &- digitCount_
           if !overflow && UInt(bitPattern: e_) <= 12287 {
-            let q = x_ / y
+            let q = x / rc64
             let abs = Self(bitPattern: UInt128(e_) &<< 113 | UInt128(q))
             return isSignMinus ? -abs : abs
           }
@@ -1293,17 +1305,16 @@ extension Decimal128: FloatingPoint {
     var quo: UInt128
     let rem: UInt128
     // Fast path for division by powers of ten.
-    let ctz = UInt64(truncatingIfNeeded: rc).trailingZeroBitCount
-    if unsafe ctz <= 33 && rc == ._exp10[unchecked: ctz] {
-      n = ctz
+    if pow10 {
+      n = ctz1
       (quo, rem) = (lc, 0)
     } else if rc <= 18446744 /* UInt64.max / 1_000_000_000_000 */
-      && lc < UInt128(UInt64(truncatingIfNeeded: rc) &* 1_000_000_000_000)
+      && lc < UInt128(rc64 &* 1_000_000_000_000)
     {
       // For a sufficiently small `rc`, compute the 34-digit quotient using
       // three 64-bit divisions.
-      var x = UInt64(truncatingIfNeeded: lc)
-      let y = UInt64(truncatingIfNeeded: rc)
+      var x = lc64
+      let y = rc64
       // See explanatory comment in `UInt128._commonLogarithm`.
       // Note that here we use a closer approximation.
       let estimate =
@@ -1334,7 +1345,7 @@ extension Decimal128: FloatingPoint {
       rem = UInt128(x)
     } else {
       // Check the integer estimate before scaling.
-      if (lc | rc) > UInt64.max && lc >= rc {
+      if !smol && lc >= rc {
         let shift = max(0, 64 &- lc.leadingZeroBitCount)
         let x = UInt64(truncatingIfNeeded: lc &>> shift)
         let y = UInt64(truncatingIfNeeded: rc &>> shift)

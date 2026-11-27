@@ -964,10 +964,10 @@ extension Decimal128: Numeric {
     // See `significandBitPattern`:
     let lc = lhs.bitPattern & ((1 &<< 113) &- 1)
     let rc = rhs.bitPattern & ((1 &<< 113) &- 1)
-    let lte = (lc | rc) <= 0xffff_ffff_ffff_ffff /* UInt64.max */
+    let smol = (lc | rc) <= 0xffff_ffff_ffff_ffff /* UInt64.max */
     guard /* lhs.isFinite && lhs.isCanonical && rhs.isFinite && rhs.isCanonical */
       max(le, re) <= 0x2fff // Neither combination field starts `0b11...`.
-      && (lte || (lc < ._1e34 && rc < ._1e34))
+      && (smol || (lc < ._1e34 && rc < ._1e34))
     else {
       if lhs.isSignalingNaN {
         _raise(.invalid, in: &flags)
@@ -1009,11 +1009,10 @@ extension Decimal128: Numeric {
     // (Note that we admit canonical zero here.)
     let e = le &+ re &- 6176
     let product: (high: UInt128, low: UInt128)
-    if lte {
-      let (hi, lo) =
-        UInt64(truncatingIfNeeded: lc).multipliedFullWidth(
-          by: UInt64(truncatingIfNeeded: rc))
-      product = (0, UInt128(hi) &<< 64 | UInt128(lo))
+    if smol {
+      let x = UInt64(truncatingIfNeeded: lc)
+      let y = UInt64(truncatingIfNeeded: rc)
+      product = (0, UInt128(x) &* UInt128(y) /* lc &* rc */)
     } else {
       product = lc._multipliedFullWidth(by: rc)
     }

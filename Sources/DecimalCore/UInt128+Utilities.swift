@@ -126,10 +126,9 @@ extension UInt128 {
   ) -> (high: Self, low: Self) {
     let multiplier: UInt128 = ._exp10[exponent]
     if exponent <= 19 && self <= 0xffff_ffff_ffff_ffff /* UInt64.max */ {
-      let (hi, lo) =
-        UInt64(truncatingIfNeeded: self).multipliedFullWidth(
-          by: UInt64(truncatingIfNeeded: multiplier))
-      return (0, UInt128(hi) &<< 64 | UInt128(lo))
+      let x = UInt64(truncatingIfNeeded: self)
+      let y = UInt64(truncatingIfNeeded: multiplier)
+      return (0, UInt128(x) &* UInt128(y) /* self &* multiplier */)
     }
     return _multipliedFullWidth(by: multiplier)
   }
@@ -300,6 +299,13 @@ extension UInt128 {
     precondition(dividend.high < divisor && divisor < ._1e34)
     if divisor <= 0xffff_ffff /* UInt32.max */ {
       let d = UInt64(truncatingIfNeeded: divisor)
+      if dividend.high == 0
+        && dividend.low <= 0xffff_ffff_ffff_ffff /* UInt64.max */
+      {
+        let x = UInt64(truncatingIfNeeded: dividend.low)
+        let (q, r) = x.quotientAndRemainder(dividingBy: d)
+        return (UInt128(q), UInt128(r))
+      }
       var r = UInt64(truncatingIfNeeded: dividend.high)
       var q = dividend.low
       for _ in 0..<4 {
