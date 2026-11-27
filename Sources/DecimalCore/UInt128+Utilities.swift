@@ -299,9 +299,7 @@ extension UInt128 {
     precondition(dividend.high < divisor && divisor < ._1e34)
     if divisor <= 0xffff_ffff /* UInt32.max */ {
       let d = UInt64(truncatingIfNeeded: divisor)
-      if dividend.high == 0
-        && dividend.low <= 0xffff_ffff_ffff_ffff /* UInt64.max */
-      {
+      if (dividend.high | (dividend.low &>> 64)) == 0 { // Expressed so as to emit only one branch.
         let x = UInt64(truncatingIfNeeded: dividend.low)
         let (q, r) = x.quotientAndRemainder(dividingBy: d)
         return (UInt128(q), UInt128(r))
