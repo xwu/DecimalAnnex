@@ -106,7 +106,9 @@ extension Decimal128 {
         return UInt128(truncatingIfNeeded: q &+ (nextAway ? 1 : 0))
       }
 
-      if n >= -19 && c <= 0xffff_ffff_ffff_ffff /* UInt64.max */ {
+      // The condition `n >= -19 && c <= 0xffff_ffff_ffff_ffff`,
+      // expressed so as to emit only one branch:
+      if (UInt128(truncatingIfNeeded: -n) | ((c &>> 64) &<< 15)) <= 19 {
         let divisor =
           unsafe UInt64(truncatingIfNeeded: UInt128._exp10[unchecked: -n])
         let (q, r) =
