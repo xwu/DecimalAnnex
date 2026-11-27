@@ -2099,6 +2099,41 @@ extension Decimal128: FloatingPoint {
       return (c.high &<< 3) | (c.low &>> 61)
     }
 
+    do {
+      let c_ = (exponentBitPattern & 1) == 0 ? c : c &* 10
+      // The remainder dividing a perfect square by 64 can only be one of:
+      // [0, 1, 4, 9, 16, 17, 25, 33, 36, 41, 49, 57].
+      // (See Cohen (1993), Algorithm 1.7.3, Test 64.)
+      //
+      // Shift the bit set representing these remainders by `c_ % 64` and check
+      // the least significant bit to find candidate perfect squares:
+      let magic = 0x0202021202030213 as UInt64
+      if (magic &>> UInt64(truncatingIfNeeded: c_)) & 1 != 0 {
+        let lo = UInt64(truncatingIfNeeded: c_)
+        let hi = UInt64(truncatingIfNeeded: c_ &>> 64)
+        // Choose `j` such that `c_ / 2**(2*j)` is in [1, 4).
+        // Store that scaled radicand in `m` with 62 fractional bits.
+        let j: Int
+        let m: UInt64
+        if hi == 0 {
+          j = (63 &- lo.leadingZeroBitCount) &>> 1
+          m = lo &<< (62 &- 2 &* j)
+        } else {
+          j = (127 &- hi.leadingZeroBitCount) &>> 1
+          m = UInt64(truncatingIfNeeded: c_ &>> (2 &* j &- 62))
+        }
+        var r = reciprocal(m)
+        if j >= 14 { r = refine(m, r) }
+        if j >= 29 { r = refine(m, r) }
+        let root = m.multipliedFullWidth(by: r).high // 61 fractional bits.
+        let y = ((root &>> (60 &- j)) &+ 1) &>> 1
+        if c_ == UInt128(y) &* UInt128(y) {
+          return Self(
+            bitPattern: UInt128(truncatingIfNeeded: pe) &<< 113 | UInt128(y))
+        }
+      }
+    }
+
     // Choose `k` such that `c * 10**k` has 34, 35 or 36 digits
     // and `k + 33` has the original exponent's parity.
     //
@@ -2123,10 +2158,13 @@ extension Decimal128: FloatingPoint {
     reciprocal = refine(m, reciprocal)
     let root = m.multipliedFullWidth(by: reciprocal).high
 
-    // Compute an estimate `y_` to `sqrt(c_) / 2**53`, with the denominator
+    // Compute an estimate `y_` of `sqrt(c_) / 2**53`, with the denominator
     // chosen because `delta = (c_ >> (53 * 2)) - y_ * y_` fits in `Int64`
     // if `c_ < 10**68`, provided that the refined reciprocal approximates
     // `1/sqrt(m/2**62)` with relative error at most `3.1e-18`.
+    //
+    // Just as `floor(a / 2**b)` can be computed using `a &>> b`,
+    // here we compute `round(a / 2**b)` using `(a &>> (b - 1) &+ 1) &>> 1`.
     let y_ = ((root &>> (113 &- j)) &+ 1) &>> 1
     let delta = Int64(
       bitPattern: UInt64(
@@ -2156,9 +2194,8 @@ extension Decimal128: FloatingPoint {
     let product =
       delta.multipliedFullWidth(
         by: Int64(truncatingIfNeeded: reciprocal &>> 1))
-    // To obtain a correctly rounded `correction`, start with twice the
-    // unrounded correction amount `product.high / 2**(j - 108)` rounded down,
-    // then add one and shift right by one to obtain the rounded `correction`.
+    // Here, again, compute correctly rounded `correction`
+    // using `(... &+ 1) &>> 1`.
     let correction = ((product.high &>> (j &- 108)) &+ 1) &>> 1
     var estimate =
       (UInt128(y_) &<< 53) &+ UInt128(truncatingIfNeeded: correction)
