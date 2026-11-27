@@ -1773,7 +1773,7 @@ extension Decimal128: FloatingPoint {
           // `cx_.quotientAndRemainder(dividingBy: cy)`
         while shift > 0 && residue != 0 {
           let chunk = min(shift, 38)
-          (quo, residue) = UInt128._quotientAndRemainder(
+          (quo, residue) = UInt128.__quotientAndRemainder(
             fullWidth: residue._multipliedFullWidth(by1e: chunk),
             dividingBy: cy)
           shift &-= chunk
@@ -1797,19 +1797,19 @@ extension Decimal128: FloatingPoint {
           // `._exp10[38] % cy`
         while n != 0 && residue != 0 {
           if (n & 1) != 0 {
-            residue = ._quotientAndRemainder(
+            residue = .__quotientAndRemainder(
               fullWidth: residue._multipliedFullWidth(by: power),
               dividingBy: cy).remainder
           }
           n &>>= 1
           if n != 0 && residue != 0 {
-            power = ._quotientAndRemainder(
+            power = .__quotientAndRemainder(
               fullWidth: power._multipliedFullWidth(by: power),
               dividingBy: cy).remainder
           }
         }
         if shift != 0 && residue != 0 {
-          residue = ._quotientAndRemainder(
+          residue = .__quotientAndRemainder(
             fullWidth: residue._multipliedFullWidth(by1e: shift),
             dividingBy: cy).remainder
         }
